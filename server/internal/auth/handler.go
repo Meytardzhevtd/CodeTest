@@ -45,6 +45,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ErrEmailTaken):
 			writeError(w, http.StatusConflict, "email already registered")
+		case errors.Is(err, ErrUsernameTaken):
+			writeError(w, http.StatusConflict, "username already registered")
 		case errors.Is(err, ErrInvalidCredentials):
 			writeError(w, http.StatusBadRequest, "invalid credentials")
 		default:

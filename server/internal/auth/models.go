@@ -6,6 +6,7 @@ import "time"
 
 type RegisterRequest struct {
 	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -30,6 +31,7 @@ type AuthResponse struct {
 type User struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
+	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

@@ -7,6 +7,7 @@ type Mode = 'login' | 'register'
 function App() {
   const [mode, setMode] = useState<Mode>('register')
   const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -30,10 +31,14 @@ function App() {
     setLoading(true)
 
     try {
+      const payloadBody = mode === 'register'
+        ? { email, username, password }
+        : { email, password }
+
       const response = await fetch(`/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(payloadBody),
       })
 
       const payload = await response.json().catch(() => ({}))
@@ -48,6 +53,7 @@ function App() {
       setUserEmail(auth.user.email)
       setIsLoggedIn(true)
       setEmail('')
+      setUsername('')
       setPassword('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unexpected error')
@@ -102,6 +108,19 @@ function App() {
               required
             />
           </label>
+
+          {mode === 'register' ? (
+            <label className="field">
+              <span>Username</span>
+              <input
+                type="text"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="coolname"
+                required
+              />
+            </label>
+          ) : null}
 
           <label className="field">
             <span>Password</span>

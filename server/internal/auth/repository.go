@@ -16,16 +16,19 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-func (r *Repository) CreateUser(ctx context.Context, email, passwordHash string) (User, error) {
+func (r *Repository) CreateUser(ctx context.Context, email, username, passwordHash string) (User, error) {
 	var user User
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, created_at)
-		VALUES ($1, $2, NOW())
-		RETURNING id, email, created_at
-	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.CreatedAt)
+		INSERT INTO users (email, username, password_hash, created_at)
+		VALUES ($1, $2, $3, NOW())
+		RETURNING id, email, username, created_at
+	`, email, username, passwordHash).Scan(&user.ID, &user.Email, &user.Username, &user.CreatedAt)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if isUniqueViolation(err, "users_email_key") {
 			return User{}, ErrEmailTaken
+		}
+		if isUniqueViolation(err, "users_username_key") {
+			return User{}, ErrUsernameTaken
 		}
 		return User{}, fmt.Errorf("create user: %w", err)
 	}
@@ -36,10 +39,10 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, st
 	var user User
 	var passwordHash string
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, email, password_hash, created_at
+		SELECT id, email, username, password_hash, created_at
 		FROM users
 		WHERE email = $1
-	`, email).Scan(&user.ID, &user.Email, &passwordHash, &user.CreatedAt)
+	`, email).Scan(&user.ID, &user.Email, &user.Username, &passwordHash, &user.CreatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return User{}, "", ErrInvalidCredentials
@@ -49,9 +52,9 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, st
 	return user, passwordHash, nil
 }
 
-func isUniqueViolation(err error) bool {
+func isUniqueViolation(err error, constraint string) bool {
 	if err == nil {
 		return false
 	}
-	return err.Error() == "ERROR: duplicate key value violates unique constraint \"users_email_key\" (SQLSTATE 23505)"
+	return err.Error() == fmt.Sprintf("ERROR: duplicate key value violates unique constraint \"%s\" (SQLSTATE 23505)", constraint)
 }

@@ -15,6 +15,7 @@ import (
 
 var (
 	ErrEmailTaken         = errors.New("email already registered")
+	ErrUsernameTaken      = errors.New("username already registered")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 )
 
@@ -61,16 +62,22 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (AuthRespon
 	if err := validatePassword(req.Password); err != nil {
 		return AuthResponse{}, "", err
 	}
+	if err := validateUsername(req.Username); err != nil {
+		return AuthResponse{}, "", err
+	}
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return AuthResponse{}, "", fmt.Errorf("hash password: %w", err)
 	}
 
-	user, err := s.repo.CreateUser(ctx, strings.ToLower(strings.TrimSpace(req.Email)), string(passwordHash))
+	user, err := s.repo.CreateUser(ctx, strings.ToLower(strings.TrimSpace(req.Email)), strings.ToLower(strings.TrimSpace(req.Username)), string(passwordHash))
 	if err != nil {
 		if errors.Is(err, ErrEmailTaken) {
 			return AuthResponse{}, "", ErrEmailTaken
+		}
+		if errors.Is(err, ErrUsernameTaken) {
+			return AuthResponse{}, "", ErrUsernameTaken
 		}
 		return AuthResponse{}, "", err
 	}
@@ -168,6 +175,14 @@ func validateEmail(email string) error {
 func validatePassword(password string) error {
 	if len(password) < 8 {
 		return errors.New("password must be at least 8 characters")
+	}
+	return nil
+}
+
+func validateUsername(username string) error {
+	username = strings.TrimSpace(strings.ToLower(username))
+	if username == "" || len(username) < 3 {
+		return errors.New("username must be at least 3 characters")
 	}
 	return nil
 }
