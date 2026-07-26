@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
-import type { AuthResponse } from './types'
+import type { AuthResponse, ProfileResponse, User } from './types'
 
 type Mode = 'login' | 'register'
 
@@ -12,14 +12,18 @@ function App() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userEmail, setUserEmail] = useState('')
+  const [profile, setProfile] = useState<User | null>(null)
+  const [profileUsername, setProfileUsername] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [profileError, setProfileError] = useState('')
+  const [profileSuccess, setProfileSuccess] = useState('')
 
   useEffect(() => {
     const saved = localStorage.getItem('auth:access_token')
-    const savedEmail = localStorage.getItem('auth:user_email')
     if (saved) {
       setIsLoggedIn(true)
-      setUserEmail(savedEmail ?? '')
+      void loadProfile(saved)
     }
   }, [])
 
@@ -49,8 +53,8 @@ function App() {
 
       const auth = payload as AuthResponse
       localStorage.setItem('auth:access_token', auth.access_token)
-      localStorage.setItem('auth:user_email', auth.user.email)
-      setUserEmail(auth.user.email)
+      setProfile(auth.user)
+      setProfileUsername(auth.user.username)
       setIsLoggedIn(true)
       setEmail('')
       setUsername('')
@@ -62,24 +66,141 @@ function App() {
     }
   }
 
+  const loadProfile = async (token: string) => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load profile')
+      }
+      const profilePayload = payload as ProfileResponse
+      setProfile(profilePayload.user)
+      setProfileUsername(profilePayload.user.username)
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Failed to load profile')
+    }
+  }
+
+  const handleProfileUpdate = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setProfileError('')
+    setProfileSuccess('')
+
+    const token = localStorage.getItem('auth:access_token')
+    if (!token) {
+      setProfileError('Please log in again')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          username: profileUsername,
+          current_password: currentPassword || undefined,
+          new_password: newPassword || undefined,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload.error || 'Update failed')
+      }
+
+      const updated = payload as ProfileResponse
+      setProfile(updated.user)
+      setProfileUsername(updated.user.username)
+      setCurrentPassword('')
+      setNewPassword('')
+      setProfileSuccess('Profile updated successfully')
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Unexpected error')
+    }
+  }
+
   const handleLogout = () => {
     localStorage.removeItem('auth:access_token')
-    localStorage.removeItem('auth:user_email')
     setIsLoggedIn(false)
-    setUserEmail('')
+    setProfile(null)
+    setProfileUsername('')
+    setCurrentPassword('')
+    setNewPassword('')
+    setProfileError('')
+    setProfileSuccess('')
   }
 
   if (isLoggedIn) {
     return (
-      <main className="success-shell">
-        <div className="success-card">
-          <div className="success-badge">✓</div>
-          <h1>Login successful</h1>
-          <p>Welcome back, {userEmail || 'friend'}.</p>
-          <button type="button" className="primary-btn" onClick={handleLogout}>
-            Log out
-          </button>
-        </div>
+      <main className="dashboard-shell">
+        <section className="dashboard-card">
+          <div className="dashboard-header">
+            <div>
+              <p className="eyebrow">Personal cabinet</p>
+              <h1>Welcome, {profile?.username || 'friend'}</h1>
+              <p className="muted">Manage your profile and account security.</p>
+            </div>
+            <button type="button" className="primary-btn" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
+
+          <div className="profile-grid">
+            <div className="profile-panel">
+              <h2>Account details</h2>
+              <div className="profile-info">
+                <div><span>Email</span><strong>{profile?.email || '—'}</strong></div>
+                <div><span>Username</span><strong>{profile?.username || '—'}</strong></div>
+                <div><span>Joined</span><strong>{profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : '—'}</strong></div>
+              </div>
+            </div>
+
+            <form onSubmit={handleProfileUpdate} className="profile-panel form-panel">
+              <h2>Update profile</h2>
+              <label className="field">
+                <span>Username</span>
+                <input
+                  type="text"
+                  value={profileUsername}
+                  onChange={(event) => setProfileUsername(event.target.value)}
+                  placeholder="new username"
+                />
+              </label>
+
+              <label className="field">
+                <span>Current password</span>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  placeholder="Enter current password"
+                />
+              </label>
+
+              <label className="field">
+                <span>New password</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="At least 8 characters"
+                />
+              </label>
+
+              {profileError ? <div className="error">{profileError}</div> : null}
+              {profileSuccess ? <div className="success-message">{profileSuccess}</div> : null}
+
+              <button type="submit" className="primary-btn" disabled={loading}>
+                {loading ? 'Saving...' : 'Save changes'}
+              </button>
+            </form>
+          </div>
+        </section>
       </main>
     )
   }

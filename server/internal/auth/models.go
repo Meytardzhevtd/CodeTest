@@ -15,6 +15,12 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type UpdateProfileRequest struct {
+	Username        string `json:"username,omitempty"`
+	CurrentPassword string `json:"current_password,omitempty"`
+	NewPassword     string `json:"new_password,omitempty"`
+}
+
 // Response payloads
 
 type TokenResponse struct {

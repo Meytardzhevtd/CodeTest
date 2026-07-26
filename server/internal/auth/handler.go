@@ -28,6 +28,7 @@ func (h *Handler) Routes() http.Handler {
 	r.Group(func(protected chi.Router) {
 		protected.Use(AuthMiddleware(h.service))
 		protected.Get("/me", h.Me)
+		protected.Put("/profile", h.UpdateProfile)
 	})
 
 	return r
@@ -108,7 +109,43 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"user_id": userID})
+
+	user, err := h.service.Me(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := UserIDFromContext(r.Context())
+	if !ok || userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	user, err := h.service.UpdateProfile(r.Context(), userID, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrUsernameTaken):
+			writeError(w, http.StatusConflict, "username already registered")
+		case errors.Is(err, ErrInvalidCredentials):
+			writeError(w, http.StatusUnauthorized, "invalid credentials")
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
 func setRefreshCookie(w http.ResponseWriter, token string) {

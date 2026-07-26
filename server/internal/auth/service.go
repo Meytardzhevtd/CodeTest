@@ -126,6 +126,71 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenRespon
 	return TokenResponse{AccessToken: accessToken, TokenType: "Bearer", ExpiresIn: s.accessTokenTTL}, nil
 }
 
+func (s *Service) Me(ctx context.Context, userID string) (User, error) {
+	if strings.TrimSpace(userID) == "" {
+		return User{}, ErrInvalidCredentials
+	}
+	user, _, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			return User{}, ErrInvalidCredentials
+		}
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdateProfileRequest) (User, error) {
+	if strings.TrimSpace(userID) == "" {
+		return User{}, ErrInvalidCredentials
+	}
+
+	var username string
+	if req.Username != "" {
+		username = strings.ToLower(strings.TrimSpace(req.Username))
+		if err := validateUsername(username); err != nil {
+			return User{}, err
+		}
+	}
+
+	var passwordHash string
+	if req.CurrentPassword != "" || req.NewPassword != "" {
+		if req.CurrentPassword == "" || req.NewPassword == "" {
+			return User{}, errors.New("current password and new password are required")
+		}
+		if err := validatePassword(req.NewPassword); err != nil {
+			return User{}, err
+		}
+
+		_, currentHash, err := s.repo.GetUserByID(ctx, userID)
+		if err != nil {
+			return User{}, err
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(req.CurrentPassword)); err != nil {
+			return User{}, ErrInvalidCredentials
+		}
+
+		hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return User{}, fmt.Errorf("hash password: %w", err)
+		}
+		passwordHash = string(hashed)
+	}
+
+	if username == "" && passwordHash == "" {
+		return User{}, errors.New("nothing to update")
+	}
+
+	user, err := s.repo.UpdateUserProfile(ctx, userID, username, passwordHash)
+	if err != nil {
+		if errors.Is(err, ErrUsernameTaken) {
+			return User{}, ErrUsernameTaken
+		}
+		return User{}, err
+	}
+	return user, nil
+}
+
 func (s *Service) issueResponse(user User) (AuthResponse, string, error) {
 	accessToken, err := s.signToken(user.ID, s.accessTTL, s.accessSecret)
 	if err != nil {

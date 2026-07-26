@@ -52,6 +52,44 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, st
 	return user, passwordHash, nil
 }
 
+func (r *Repository) GetUserByID(ctx context.Context, userID string) (User, string, error) {
+	var user User
+	var passwordHash string
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, email, username, password_hash, created_at
+		FROM users
+		WHERE id = $1
+	`, userID).Scan(&user.ID, &user.Email, &user.Username, &passwordHash, &user.CreatedAt)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return User{}, "", ErrInvalidCredentials
+		}
+		return User{}, "", fmt.Errorf("get user by id: %w", err)
+	}
+	return user, passwordHash, nil
+}
+
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID, username, passwordHash string) (User, error) {
+	var user User
+	err := r.pool.QueryRow(ctx, `
+		UPDATE users
+		SET username = COALESCE(NULLIF($2, ''), username),
+		    password_hash = COALESCE(NULLIF($3, ''), password_hash)
+		WHERE id = $1
+		RETURNING id, email, username, created_at
+	`, userID, username, passwordHash).Scan(&user.ID, &user.Email, &user.Username, &user.CreatedAt)
+	if err != nil {
+		if isUniqueViolation(err, "users_username_key") {
+			return User{}, ErrUsernameTaken
+		}
+		if err == pgx.ErrNoRows {
+			return User{}, ErrInvalidCredentials
+		}
+		return User{}, fmt.Errorf("update user profile: %w", err)
+	}
+	return user, nil
+}
+
 func isUniqueViolation(err error, constraint string) bool {
 	if err == nil {
 		return false
