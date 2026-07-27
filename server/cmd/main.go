@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	authinternal "github.com/meytardzhevtd/CodeTest/server/internal/auth"
+	tasksinternal "github.com/meytardzhevtd/CodeTest/server/internal/tasks"
 )
 
 type config struct {
@@ -47,15 +48,30 @@ func main() {
 		log.Fatalf("run migrations: %v", err)
 	}
 
-	repo := authinternal.NewRepository(pool)
-	service := authinternal.NewService(repo)
-	handler := authinternal.NewHandler(service)
+	authRepo := authinternal.NewRepository(pool)
+	authService := authinternal.NewService(authRepo)
+	authHandler := authinternal.NewHandler(authService)
+
+	taskRepo := tasksinternal.NewRepository(pool)
+	taskService := tasksinternal.NewService(taskRepo)
+	taskHandler := tasksinternal.NewHandler(taskService)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
-	r.Use(cors.Handler(cors.Options{AllowedOrigins: []string{"*"}, AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"}, AllowCredentials: true}))
+	r.Use(middleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowCredentials: true,
+	}))
 
-	r.Mount("/api/auth", handler.Routes())
+	r.Mount("/api/auth", authHandler.Routes())
+
+	r.Group(func(r chi.Router) {
+		r.Use(authinternal.AuthMiddleware(authService))
+		r.Mount("/api/tasks", taskHandler.Routes())
+	})
 
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
