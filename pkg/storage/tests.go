@@ -6,11 +6,14 @@ import (
 	"io"
 	"regexp"
 	"sort"
+	"strconv"
 
 	"github.com/minio/minio-go/v7"
 )
 
-var keyPattern = regexp.MustCompile(`^test(\d{3})\.(in|out)$`)
+// \d+ (not a fixed width) so test numbers past the zero-padding width used by
+// testKey are still recognized instead of silently dropped from listings.
+var keyPattern = regexp.MustCompile(`^test(\d+)\.(in|out)$`)
 
 type TestCase struct {
 	Number int
@@ -35,6 +38,11 @@ func (c *Client) UploadTest(ctx context.Context, taskID string, testNum int, inp
 	if _, err := c.mc.PutObject(ctx, c.bucket, outKey, output, outputSize, minio.PutObjectOptions{
 		ContentType: "text/plain",
 	}); err != nil {
+		// Best-effort cleanup: don't leave an orphaned .in with no matching
+		// .out, which would otherwise fail every future ListTests for this task.
+		if rmErr := c.mc.RemoveObject(ctx, c.bucket, inKey, minio.RemoveObjectOptions{}); rmErr != nil {
+			return fmt.Errorf("storage: upload %q: %w (cleanup of %q also failed: %v)", outKey, err, inKey, rmErr)
+		}
 		return fmt.Errorf("storage: upload %q: %w", outKey, err)
 	}
 
@@ -66,8 +74,10 @@ func (c *Client) ListTests(ctx context.Context, taskID string) ([]TestCase, erro
 			continue
 		}
 
-		var num int
-		fmt.Sscanf(m[1], "%d", &num)
+		num, err := strconv.Atoi(m[1])
+		if err != nil {
+			return nil, fmt.Errorf("storage: parse test number from key %q: %w", obj.Key, err)
+		}
 
 		p, ok := byNumber[num]
 		if !ok {
@@ -87,8 +97,15 @@ func (c *Client) ListTests(ctx context.Context, taskID string) ([]TestCase, erro
 		return nil, fmt.Errorf("storage: no tests found for task %q", taskID)
 	}
 
-	result := make([]TestCase, 0, len(byNumber))
-	for num, p := range byNumber {
+	numbers := make([]int, 0, len(byNumber))
+	for num := range byNumber {
+		numbers = append(numbers, num)
+	}
+	sort.Ints(numbers)
+
+	result := make([]TestCase, 0, len(numbers))
+	for _, num := range numbers {
+		p := byNumber[num]
 		if !p.hasIn || !p.hasOut {
 			return nil, fmt.Errorf("storage: task %q test %03d is incomplete (in=%v out=%v)", taskID, num, p.hasIn, p.hasOut)
 		}
@@ -99,10 +116,6 @@ func (c *Client) ListTests(ctx context.Context, taskID string) ([]TestCase, erro
 		})
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Number < result[j].Number
-	})
-
 	return result, nil
 }
 
@@ -111,11 +124,22 @@ func (c *Client) GetTest(ctx context.Context, tc TestCase) (input io.ReadCloser,
 	if err != nil {
 		return nil, nil, fmt.Errorf("storage: get %q: %w", tc.InKey, err)
 	}
+	// GetObject is lazy: it doesn't hit the network until the first read/stat,
+	// so a missing key only surfaces here, not on the call above.
+	if _, err := inObj.Stat(); err != nil {
+		inObj.Close()
+		return nil, nil, fmt.Errorf("storage: stat %q: %w", tc.InKey, err)
+	}
 
 	outObj, err := c.mc.GetObject(ctx, c.bucket, tc.OutKey, minio.GetObjectOptions{})
 	if err != nil {
 		inObj.Close()
 		return nil, nil, fmt.Errorf("storage: get %q: %w", tc.OutKey, err)
+	}
+	if _, err := outObj.Stat(); err != nil {
+		inObj.Close()
+		outObj.Close()
+		return nil, nil, fmt.Errorf("storage: stat %q: %w", tc.OutKey, err)
 	}
 
 	return inObj, outObj, nil
