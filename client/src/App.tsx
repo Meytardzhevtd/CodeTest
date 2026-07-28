@@ -29,15 +29,6 @@ function AppRoutes() {
     return <AuthPage key={mode} initialMode={mode} />
   }
 
-  const taskDetailParams = matchPath('/tasks/:id', path)
-  if (taskDetailParams) {
-    return (
-      <Layout>
-        <TaskDetailPage key={taskDetailParams.id} taskId={taskDetailParams.id} />
-      </Layout>
-    )
-  }
-
   switch (path) {
     case '/tasks/new':
       return (
@@ -51,13 +42,22 @@ function AppRoutes() {
           <ProfilePage />
         </Layout>
       )
-    default:
-      return (
-        <Layout>
-          <TasksListPage />
-        </Layout>
-      )
   }
+
+  const taskDetailParams = matchPath('/tasks/:id', path)
+  if (taskDetailParams) {
+    return (
+      <Layout>
+        <TaskDetailPage key={taskDetailParams.id} taskId={taskDetailParams.id} />
+      </Layout>
+    )
+  }
+
+  return (
+    <Layout>
+      <TasksListPage />
+    </Layout>
+  )
 }
 
 function App() {
