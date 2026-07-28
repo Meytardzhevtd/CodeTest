@@ -41,6 +41,7 @@ func TestService_CreateSubmition_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
+
 	if resp.ID != expected.ID {
 		t.Errorf("expected id %s, got %s", expected.ID, resp.ID)
 	}
