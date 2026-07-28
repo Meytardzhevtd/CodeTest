@@ -30,7 +30,6 @@ func (s *Service) CreateSubmition(ctx context.Context, userID string, request Cr
 
 func (s *Service) GetInfoAboutSubmit(ctx context.Context, submitID string) (GetSubmissionResponse, error) {
 	// дергать каждые n секунд, проверять состояние задачи
-	// AAA
 	sub, err := s.repo.GetByID(ctx, submitID)
 	if err != nil {
 		return GetSubmissionResponse{}, err
