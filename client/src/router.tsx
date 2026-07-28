@@ -27,6 +27,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   return <RouterContext.Provider value={{ path, navigate }}>{children}</RouterContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook is intentionally colocated with its provider
 export function useRouter(): RouterContextValue {
   const ctx = useContext(RouterContext)
   if (!ctx) {
@@ -35,6 +36,7 @@ export function useRouter(): RouterContextValue {
   return ctx
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- plain utility, not a component
 export function matchPath(pattern: string, path: string): Record<string, string> | null {
   const patternParts = pattern.split('/').filter(Boolean)
   const pathParts = path.split('/').filter(Boolean)
