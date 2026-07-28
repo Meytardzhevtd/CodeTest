@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	authinternal "github.com/meytardzhevtd/CodeTest/server/internal/auth"
+	submitinternal "github.com/meytardzhevtd/CodeTest/server/internal/submit"
 	tasksinternal "github.com/meytardzhevtd/CodeTest/server/internal/tasks"
 )
 
@@ -56,6 +57,10 @@ func main() {
 	taskService := tasksinternal.NewService(taskRepo)
 	taskHandler := tasksinternal.NewHandler(taskService)
 
+	submitRepo := submitinternal.NewRepository(pool)
+	submitService := submitinternal.NewService(submitRepo)
+	submitHandler := submitinternal.NewHandler(submitService)
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -71,6 +76,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(authinternal.AuthMiddleware(authService))
 		r.Mount("/api/tasks", taskHandler.Routes())
+		r.Mount("/api/submit", submitHandler.Routes())
 	})
 
 	addr := os.Getenv("HTTP_ADDR")

@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type RepositoryInterface interface {
+	Create(ctx context.Context, submission Submission) (Submission, error)
+	GetByID(ctx context.Context, id string) (Submission, error)
+	ListByUserID(ctx context.Context, userID string, limit, offset int) ([]Submission, int, error)
+	ListByTaskID(ctx context.Context, taskID string, limit, offset int) ([]Submission, int, error)
+	UpdateResult(ctx context.Context, id string, status Status, output, errMsg string) (Submission, error)
+	Delete(ctx context.Context, id string) error
+}
+
 type Repository struct {
 	pool *pgxpool.Pool
 }
