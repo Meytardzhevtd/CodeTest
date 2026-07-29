@@ -16,6 +16,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/meytardzhevtd/CodeTest/pkg/storage"
 	authinternal "github.com/meytardzhevtd/CodeTest/server/internal/auth"
 	submitinternal "github.com/meytardzhevtd/CodeTest/server/internal/submit"
 	tasksinternal "github.com/meytardzhevtd/CodeTest/server/internal/tasks"
@@ -26,6 +27,12 @@ type config struct {
 	JWTAccessSecret  string `env:"JWT_ACCESS_SECRET,required"`
 	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET,required"`
 	JWTIssuer        string `env:"JWT_ISSUER"`
+
+	MinioEndpoint  string `env:"MINIO_ENDPOINT,required"`
+	MinioAccessKey string `env:"MINIO_ACCESS_KEY,required"`
+	MinioSecretKey string `env:"MINIO_SECRET_KEY,required"`
+	MinioBucket    string `env:"MINIO_BUCKET,required"`
+	MinioUseSSL    bool   `env:"MINIO_USE_SSL"`
 }
 
 func main() {
@@ -49,12 +56,26 @@ func main() {
 		log.Fatalf("run migrations: %v", err)
 	}
 
+	storageClient, err := storage.NewClient(storage.Config{
+		Endpoint:  cfg.MinioEndpoint,
+		AccessKey: cfg.MinioAccessKey,
+		SecretKey: cfg.MinioSecretKey,
+		Bucket:    cfg.MinioBucket,
+		UseSSL:    cfg.MinioUseSSL,
+	})
+	if err != nil {
+		log.Fatalf("create storage client: %v", err)
+	}
+	if err := storageClient.EnsureBucket(ctx); err != nil {
+		log.Fatalf("ensure storage bucket: %v", err)
+	}
+
 	authRepo := authinternal.NewRepository(pool)
 	authService := authinternal.NewService(authRepo)
 	authHandler := authinternal.NewHandler(authService)
 
 	taskRepo := tasksinternal.NewRepository(pool)
-	taskService := tasksinternal.NewService(taskRepo)
+	taskService := tasksinternal.NewService(taskRepo, storageClient)
 	taskHandler := tasksinternal.NewHandler(taskService)
 
 	submitRepo := submitinternal.NewRepository(pool)

@@ -47,3 +47,7 @@ export interface CreateTaskRequest {
   time_limit_ms: number
   memory_limit_mb: number
 }
+
+export interface UploadTestsResponse {
+  tests_uploaded: number
+}

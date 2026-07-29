@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import { ApiError, tasksApi } from '../api'
 import type { Task } from '../types'
 import { DifficultyBadge } from '../components/DifficultyBadge'
+import { TestsUploadCard } from '../components/TestsUploadCard'
+import { useAuth } from '../context/AuthContext'
 import { useRouter } from '../router'
 
 type SubmitState = 'idle' | 'checking' | 'done'
@@ -22,6 +24,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
   const [language, setLanguage] = useState('python')
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const { navigate } = useRouter()
+  const { user } = useAuth()
 
   useEffect(() => {
     let cancelled = false
@@ -152,6 +155,8 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
           ) : null}
         </form>
       </div>
+
+      {user?.id === task.created_by ? <TestsUploadCard taskId={task.id} /> : null}
     </div>
   )
 }

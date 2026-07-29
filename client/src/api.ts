@@ -4,6 +4,7 @@ import type {
   ProfileResponse,
   Task,
   TaskListResponse,
+  UploadTestsResponse,
 } from './types'
 
 const TOKEN_KEY = 'auth:access_token'
@@ -31,8 +32,11 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
+  // FormData bodies (e.g. file uploads) must not get an explicit Content-Type:
+  // the browser needs to set its own multipart boundary.
+  const isFormData = options.body instanceof FormData
   const headers: Record<string, string> = {
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 
@@ -89,4 +93,13 @@ export const tasksApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  uploadTests: (taskId: string, archive: File) => {
+    const formData = new FormData()
+    formData.append('archive', archive)
+    return request<UploadTestsResponse>(`/api/tasks/${encodeURIComponent(taskId)}/tests`, {
+      method: 'POST',
+      body: formData,
+    })
+  },
 }
