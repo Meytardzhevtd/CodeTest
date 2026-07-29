@@ -15,6 +15,9 @@ const (
 	StatusCE      Status = "CE"
 	StatusTL      Status = "TL"
 	StatusML      Status = "ML"
+	// StatusError помечает сабмишн, который не удалось поставить в очередь
+	// или обработать по инфраструктурной причине (не связанной с самим решением).
+	StatusError Status = "ERROR"
 )
 
 type Submission struct {

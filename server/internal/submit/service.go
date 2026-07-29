@@ -3,15 +3,19 @@ package submit
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
+
+	"github.com/meytardzhevtd/CodeTest/pkg/kafka"
 )
 
 type Service struct {
-	repo RepositoryInterface
+	repo     RepositoryInterface
+	producer ProducerInterface
 }
 
-func NewService(repo RepositoryInterface) *Service {
-	return &Service{repo: repo}
+func NewService(repo RepositoryInterface, producer ProducerInterface) *Service {
+	return &Service{repo: repo, producer: producer}
 }
 
 func (s *Service) CreateSubmition(ctx context.Context, userID string, request CreateSubmissionRequest) (CreateSubmissionResponse, error) {
@@ -31,9 +35,38 @@ func (s *Service) CreateSubmition(ctx context.Context, userID string, request Cr
 	if err != nil {
 		return CreateSubmissionResponse{}, err
 	}
-	// TODO: надо отправить соощщение в Kafka о том, что нужно выполнить задчу
+
+	msg := kafka.SubmissionMessage{
+		SubmissionID: sub.ID,
+		TaskID:       sub.TaskID,
+		Code:         sub.Code,
+		Language:     sub.Language,
+	}
+	if err := s.producer.Send(ctx, sub.ID, msg); err != nil {
+		// Сабмишн уже создан в БД, но поставить в очередь на проверку не вышло —
+		// помечаем его как ошибочный, чтобы он не завис в "pending" навсегда.
+		if _, updErr := s.repo.UpdateResult(ctx, sub.ID, StatusError, "", "failed to queue submission for checking"); updErr != nil {
+			log.Printf("[submit] failed to mark submission %s as errored after queue failure: %v", sub.ID, updErr)
+		}
+		return CreateSubmissionResponse{}, err
+	}
 
 	return CreateSubmissionResponse{ID: sub.ID, Status: sub.Status}, nil
+}
+
+// HandleResult обрабатывает вердикт, пришедший от checker-микросервиса по Kafka.
+// Возвращает ошибку, если сообщение не удалось разобрать/применить — в этом случае
+// consumer не закоммитит оффсет и попробует обработать сообщение снова.
+func (s *Service) HandleResult(ctx context.Context, msg kafka.ResponseMessage) error {
+	if strings.TrimSpace(msg.SubmissionID) == "" {
+		return errors.New("result message missing submission_id")
+	}
+
+	if _, err := s.repo.UpdateResult(ctx, msg.SubmissionID, Status(msg.Status), msg.Output, msg.Error); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) GetInfoAboutSubmit(ctx context.Context, userID, submitID string) (GetSubmissionResponse, error) {

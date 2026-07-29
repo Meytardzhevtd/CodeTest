@@ -30,7 +30,7 @@ func (r *Repository) Create(ctx context.Context, submission Submission) (Submiss
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO submissions (task_id, user_id, code, language, status)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, task_id, user_id, code, language, status, output, error, created_at, updated_at
+		RETURNING id, task_id, user_id, code, language, status, COALESCE(output, ''), COALESCE(error, ''), created_at, updated_at
 	`, submission.TaskID, submission.UserID, submission.Code, submission.Language, submission.Status).Scan(
 		&created.ID,
 		&created.TaskID,
@@ -52,7 +52,7 @@ func (r *Repository) Create(ctx context.Context, submission Submission) (Submiss
 func (r *Repository) GetByID(ctx context.Context, id string) (Submission, error) {
 	var submission Submission
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, task_id, user_id, code, language, status, output, error, created_at, updated_at
+		SELECT id, task_id, user_id, code, language, status, COALESCE(output, ''), COALESCE(error, ''), created_at, updated_at
 		FROM submissions
 		WHERE id = $1
 	`, id).Scan(
@@ -80,7 +80,7 @@ func (r *Repository) ListByUserID(ctx context.Context, userID string, limit, off
 	submissions := []Submission{}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, task_id, user_id, code, language, status, output, error, created_at, updated_at
+		SELECT id, task_id, user_id, code, language, status, COALESCE(output, ''), COALESCE(error, ''), created_at, updated_at
 		FROM submissions
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -127,7 +127,7 @@ func (r *Repository) ListByTaskID(ctx context.Context, taskID string, limit, off
 	submissions := []Submission{}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, task_id, user_id, code, language, status, output, error, created_at, updated_at
+		SELECT id, task_id, user_id, code, language, status, COALESCE(output, ''), COALESCE(error, ''), created_at, updated_at
 		FROM submissions
 		WHERE task_id = $1
 		ORDER BY created_at DESC

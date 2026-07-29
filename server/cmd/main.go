@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-chi/chi/v5"
@@ -16,6 +20,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/meytardzhevtd/CodeTest/pkg/kafka"
 	"github.com/meytardzhevtd/CodeTest/pkg/storage"
 	authinternal "github.com/meytardzhevtd/CodeTest/server/internal/auth"
 	submitinternal "github.com/meytardzhevtd/CodeTest/server/internal/submit"
@@ -33,6 +38,8 @@ type config struct {
 	MinioSecretKey string `env:"MINIO_SECRET_KEY,required"`
 	MinioBucket    string `env:"MINIO_BUCKET,required"`
 	MinioUseSSL    bool   `env:"MINIO_USE_SSL"`
+
+	KafkaBrokers []string `env:"KAFKA_BROKERS" envSeparator:"," envDefault:"localhost:9092"`
 }
 
 func main() {
@@ -41,7 +48,9 @@ func main() {
 		log.Fatalf("parse config: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	pool, err := pgxpool.New(ctx, cfg.DBDSN)
 	if err != nil {
 		log.Fatalf("connect db: %v", err)
@@ -78,9 +87,24 @@ func main() {
 	taskService := tasksinternal.NewService(taskRepo, storageClient)
 	taskHandler := tasksinternal.NewHandler(taskService)
 
+	submissionsProducer := kafka.NewProducer(cfg.KafkaBrokers, kafka.TopicSubmissions)
+	defer submissionsProducer.Close()
+
 	submitRepo := submitinternal.NewRepository(pool)
-	submitService := submitinternal.NewService(submitRepo)
+	submitService := submitinternal.NewService(submitRepo, submissionsProducer)
 	submitHandler := submitinternal.NewHandler(submitService)
+
+	resultsConsumer := kafka.NewConsumer(cfg.KafkaBrokers, kafka.TopicResults, "server-results-consumer")
+	defer resultsConsumer.Close()
+
+	go resultsConsumer.Consume(ctx, func(ctx context.Context, data []byte) error {
+		var msg kafka.ResponseMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			log.Printf("[submit] invalid result message, skipping: %v", err)
+			return nil
+		}
+		return submitService.HandleResult(ctx, msg)
+	})
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -105,9 +129,22 @@ func main() {
 		addr = ":8080"
 	}
 
-	log.Printf("listening on %s", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
-		log.Fatalf("serve: %v", err)
+	srv := &http.Server{Addr: addr, Handler: r}
+
+	go func() {
+		log.Printf("listening on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("serve: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Printf("shutting down...")
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("http shutdown error: %v", err)
 	}
 }
 

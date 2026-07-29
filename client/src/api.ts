@@ -1,7 +1,10 @@
 import type {
   AddTagsResponse,
   AuthResponse,
+  CreateSubmissionRequest,
+  CreateSubmissionResponse,
   CreateTaskRequest,
+  GetSubmissionResponse,
   ProfileResponse,
   Task,
   TaskListResponse,
@@ -109,4 +112,14 @@ export const tasksApi = {
       method: 'POST',
       body: JSON.stringify({ tags }),
     }),
+}
+
+export const submitApi = {
+  create: (body: CreateSubmissionRequest) =>
+    request<CreateSubmissionResponse>('/api/submit', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  get: (id: string) => request<GetSubmissionResponse>(`/api/submit?id=${encodeURIComponent(id)}`),
 }

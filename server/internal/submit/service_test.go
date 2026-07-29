@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/meytardzhevtd/CodeTest/pkg/kafka"
 	"go.uber.org/mock/gomock"
 )
 
@@ -13,7 +14,8 @@ func TestService_CreateSubmition_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
 
 	ctx := context.Background()
 	userID := "user-1"
@@ -35,6 +37,9 @@ func TestService_CreateSubmition_Success(t *testing.T) {
 	mockRepo.EXPECT().
 		Create(gomock.Any(), gomock.Any()).
 		Return(expected, nil)
+	mockProducer.EXPECT().
+		Send(gomock.Any(), gomock.Eq(expected.ID), gomock.Any()).
+		Return(nil)
 
 	resp, err := svc.CreateSubmition(ctx, userID, req)
 
@@ -55,7 +60,8 @@ func TestService_CreateSubmition_ValidationError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
 
 	ctx := context.Background()
 
@@ -66,12 +72,43 @@ func TestService_CreateSubmition_ValidationError(t *testing.T) {
 	}
 }
 
+func TestService_CreateSubmition_ProducerSendError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockRepositoryInterface(ctrl)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
+
+	ctx := context.Background()
+	req := CreateSubmissionRequest{TaskID: "task-1", Code: "print('hi')", Language: "python"}
+	created := Submission{ID: "sub-1", TaskID: req.TaskID, Code: req.Code, Language: req.Language, Status: StatusPending}
+	sendErr := errors.New("broker unavailable")
+
+	mockRepo.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Return(created, nil)
+	mockProducer.EXPECT().
+		Send(gomock.Any(), gomock.Eq(created.ID), gomock.Any()).
+		Return(sendErr)
+	mockRepo.EXPECT().
+		UpdateResult(gomock.Any(), gomock.Eq(created.ID), gomock.Eq(StatusError), gomock.Any(), gomock.Any()).
+		Return(Submission{}, nil)
+
+	_, err := svc.CreateSubmition(ctx, "user-1", req)
+
+	if !errors.Is(err, sendErr) {
+		t.Errorf("expected producer error to propagate, got %v", err)
+	}
+}
+
 func TestService_GetInfoAboutSubmit_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
 
 	ctx := context.Background()
 	userID := "user-1"
@@ -96,7 +133,8 @@ func TestService_GetInfoAboutSubmit_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
 
 	ctx := context.Background()
 
@@ -116,7 +154,8 @@ func TestService_GetInfoAboutSubmit_Forbidden(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
 
 	ctx := context.Background()
 	sub := Submission{ID: "sub-1", UserID: "owner"}
@@ -129,5 +168,40 @@ func TestService_GetInfoAboutSubmit_Forbidden(t *testing.T) {
 
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("expected ErrForbidden, got %v", err)
+	}
+}
+
+func TestService_HandleResult_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockRepositoryInterface(ctrl)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
+
+	ctx := context.Background()
+	msg := kafka.ResponseMessage{SubmissionID: "sub-1", Status: "OK", Output: "42"}
+
+	mockRepo.EXPECT().
+		UpdateResult(gomock.Any(), gomock.Eq(msg.SubmissionID), gomock.Eq(Status(msg.Status)), gomock.Eq(msg.Output), gomock.Eq(msg.Error)).
+		Return(Submission{}, nil)
+
+	if err := svc.HandleResult(ctx, msg); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestService_HandleResult_MissingSubmissionID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockRepositoryInterface(ctrl)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
+
+	ctx := context.Background()
+
+	if err := svc.HandleResult(ctx, kafka.ResponseMessage{Status: "OK"}); err == nil {
+		t.Error("expected error for missing submission_id, got nil")
 	}
 }

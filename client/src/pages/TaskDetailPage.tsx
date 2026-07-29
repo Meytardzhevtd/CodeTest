@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ApiError, tasksApi } from '../api'
-import type { Task } from '../types'
+import { ApiError, submitApi, tasksApi } from '../api'
+import type { Submission, Task } from '../types'
 import { DifficultyBadge } from '../components/DifficultyBadge'
 import { TestsUploadCard } from '../components/TestsUploadCard'
 import { useAuth } from '../context/AuthContext'
@@ -16,6 +16,18 @@ const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript' },
 ]
 
+const POLL_INTERVAL_MS = 1000
+
+const STATUS_LABELS: Record<string, string> = {
+  OK: 'Решение принято',
+  WA: 'Неверный ответ',
+  RE: 'Ошибка выполнения',
+  CE: 'Ошибка компиляции',
+  TL: 'Превышено время выполнения',
+  ML: 'Превышен лимит памяти',
+  ERROR: 'Не удалось проверить решение, попробуйте ещё раз',
+}
+
 export function TaskDetailPage({ slug }: { slug: string }) {
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
@@ -23,6 +35,9 @@ export function TaskDetailPage({ slug }: { slug: string }) {
   const [code, setCode] = useState('')
   const [language, setLanguage] = useState('python')
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
+  const [submitError, setSubmitError] = useState('')
+  const [verdict, setVerdict] = useState<Submission | null>(null)
+  const pollHandle = useRef<number | null>(null)
   const { navigate } = useRouter()
   const { user } = useAuth()
 
@@ -48,12 +63,52 @@ export function TaskDetailPage({ slug }: { slug: string }) {
     }
   }, [slug])
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault()
-    if (!code.trim()) return
+  useEffect(() => {
+    return () => {
+      if (pollHandle.current !== null) {
+        window.clearInterval(pollHandle.current)
+      }
+    }
+  }, [])
 
+  const stopPolling = () => {
+    if (pollHandle.current !== null) {
+      window.clearInterval(pollHandle.current)
+      pollHandle.current = null
+    }
+  }
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!code.trim() || submitState === 'checking' || !task) return
+
+    stopPolling()
+    setSubmitError('')
+    setVerdict(null)
     setSubmitState('checking')
-    window.setTimeout(() => setSubmitState('done'), 700)
+
+    try {
+      const created = await submitApi.create({ task_id: task.id, code, language })
+
+      pollHandle.current = window.setInterval(async () => {
+        try {
+          const res = await submitApi.get(created.id)
+          if (res.submission.status === 'pending' || res.submission.status === 'running') {
+            return
+          }
+          stopPolling()
+          setVerdict(res.submission)
+          setSubmitState('done')
+        } catch (err) {
+          stopPolling()
+          setSubmitError(err instanceof ApiError ? err.message : 'Не удалось получить результат проверки')
+          setSubmitState('idle')
+        }
+      }, POLL_INTERVAL_MS)
+    } catch (err) {
+      setSubmitError(err instanceof ApiError ? err.message : 'Не удалось отправить решение')
+      setSubmitState('idle')
+    }
   }
 
   if (loading) {
@@ -157,9 +212,12 @@ export function TaskDetailPage({ slug }: { slug: string }) {
             </button>
           </div>
 
-          {submitState === 'done' ? (
-            <div className="alert alert-info">
-              Проверка решений скоро заработает — сервис проверки кода ещё разрабатывается.
+          {submitError ? <div className="alert alert-error">{submitError}</div> : null}
+
+          {submitState === 'done' && verdict ? (
+            <div className={`alert ${verdict.status === 'OK' ? 'alert-success' : 'alert-error'}`}>
+              {STATUS_LABELS[verdict.status] ?? verdict.status}
+              {verdict.error ? <div className="verdict-detail">{verdict.error}</div> : null}
             </div>
           ) : null}
         </form>

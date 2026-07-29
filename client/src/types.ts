@@ -56,3 +56,33 @@ export interface UploadTestsResponse {
 export interface AddTagsResponse {
   tags: string[]
 }
+
+export type SubmissionStatus = 'pending' | 'running' | 'OK' | 'WA' | 'RE' | 'CE' | 'TL' | 'ML' | 'ERROR'
+
+export interface Submission {
+  id: string
+  task_id: string
+  user_id: string
+  code: string
+  language: string
+  status: SubmissionStatus
+  output?: string
+  error?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateSubmissionRequest {
+  task_id: string
+  code: string
+  language: string
+}
+
+export interface CreateSubmissionResponse {
+  id: string
+  status: SubmissionStatus
+}
+
+export interface GetSubmissionResponse {
+  submission: Submission
+}
