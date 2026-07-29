@@ -23,6 +23,7 @@ func (h *Handler) Routes() http.Handler {
 
 	r.Post("/", h.CreateTask)
 	r.Get("/", h.ListTasks)
+	r.Get("/slug/{slug}", h.GetTaskBySlug)
 	r.Get("/{id}", h.GetTaskByID)
 	r.Delete("/{id}", h.DeleteTask)
 	r.Post("/{id}/tests", h.UploadTests)
@@ -65,6 +66,27 @@ func (h *Handler) GetTaskByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	task, err := h.service.GetTaskByID(r.Context(), id)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTaskNotFound):
+			writeError(w, http.StatusNotFound, "task not found")
+		default:
+			writeError(w, http.StatusInternalServerError, "something went wrong")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, task)
+}
+
+func (h *Handler) GetTaskBySlug(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		writeError(w, http.StatusBadRequest, "slug is required")
+		return
+	}
+
+	task, err := h.service.GetTaskBySlug(r.Context(), slug)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrTaskNotFound):

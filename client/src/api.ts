@@ -86,7 +86,7 @@ export const tasksApi = {
   list: (limit = 50, offset = 0) =>
     request<TaskListResponse>(`/api/tasks?limit=${limit}&offset=${offset}`),
 
-  get: (id: string) => request<Task>(`/api/tasks/${encodeURIComponent(id)}`),
+  getBySlug: (slug: string) => request<Task>(`/api/tasks/slug/${encodeURIComponent(slug)}`),
 
   create: (body: CreateTaskRequest) =>
     request<Task>('/api/tasks', {

@@ -103,7 +103,7 @@ export function TasksListPage() {
       {!loading && !error && visibleTasks.length > 0 ? (
         <div className="task-grid">
           {visibleTasks.map((task) => (
-            <Link to={`/tasks/${task.id}`} key={task.id} className="task-card">
+            <Link to={`/tasks/${task.slug}`} key={task.id} className="task-card">
               <div className="task-card-top">
                 <DifficultyBadge difficulty={task.difficulty} />
                 <span className="task-slug">{task.slug}</span>

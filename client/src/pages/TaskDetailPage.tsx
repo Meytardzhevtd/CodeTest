@@ -16,7 +16,7 @@ const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript' },
 ]
 
-export function TaskDetailPage({ taskId }: { taskId: string }) {
+export function TaskDetailPage({ slug }: { slug: string }) {
   const [task, setTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -30,7 +30,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
     let cancelled = false
 
     tasksApi
-      .get(taskId)
+      .getBySlug(slug)
       .then((res) => {
         if (!cancelled) setTask(res)
       })
@@ -46,7 +46,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
     return () => {
       cancelled = true
     }
-  }, [taskId])
+  }, [slug])
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()

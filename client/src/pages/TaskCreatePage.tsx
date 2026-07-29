@@ -29,7 +29,7 @@ export function TaskCreatePage() {
         time_limit_ms: timeLimitMs,
         memory_limit_mb: memoryLimitMb,
       })
-      navigate(`/tasks/${task.id}`)
+      navigate(`/tasks/${task.slug}`)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось создать задачу')
     } finally {

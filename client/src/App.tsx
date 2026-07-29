@@ -44,11 +44,11 @@ function AppRoutes() {
       )
   }
 
-  const taskDetailParams = matchPath('/tasks/:id', path)
+  const taskDetailParams = matchPath('/tasks/:slug', path)
   if (taskDetailParams) {
     return (
       <Layout>
-        <TaskDetailPage key={taskDetailParams.id} taskId={taskDetailParams.id} />
+        <TaskDetailPage key={taskDetailParams.slug} slug={taskDetailParams.slug} />
       </Layout>
     )
   }
