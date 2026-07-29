@@ -25,6 +25,7 @@ func (h *Handler) Routes() http.Handler {
 	r.Get("/", h.ListTasks)
 	r.Get("/{id}", h.GetTaskByID)
 	r.Delete("/{id}", h.DeleteTask)
+	r.Post("/{id}/tests", h.UploadTests)
 
 	return r
 }
@@ -116,6 +117,51 @@ func (h *Handler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusNoContent, nil)
+}
+
+func (h *Handler) UploadTests(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	taskID := chi.URLParam(r, "id")
+	if taskID == "" {
+		writeError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, MaxTestsArchiveBytes)
+	if err := r.ParseMultipartForm(MaxTestsArchiveBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "archive is too large or the request is not a valid multipart form")
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	file, header, err := r.FormFile("archive")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, `missing "archive" file field`)
+		return
+	}
+	defer file.Close()
+
+	count, err := h.service.UploadTests(r.Context(), userId, taskID, file, header.Size)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTaskNotFound):
+			writeError(w, http.StatusNotFound, "task not found")
+		case errors.Is(err, ErrForbidden):
+			writeError(w, http.StatusForbidden, "only the task creator can upload tests")
+		case errors.Is(err, ErrInvalidArchive):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "something went wrong")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"tests_uploaded": count})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {

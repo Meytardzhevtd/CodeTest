@@ -13,7 +13,7 @@ func TestService_CreateTask_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	req := CreateTaskRequest{
@@ -54,7 +54,7 @@ func TestService_CreateTask_SlugAlreadyExists(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	req := CreateTaskRequest{
@@ -82,7 +82,7 @@ func TestService_CreateTask_ValidationError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	req := CreateTaskRequest{
@@ -103,7 +103,7 @@ func TestService_GetTaskByID_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	taskID := "550e8400-e29b-41d4-a716-446655440000"
@@ -137,7 +137,7 @@ func TestService_GetTaskByID_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	taskID := "non-existent-id"
@@ -158,7 +158,7 @@ func TestService_GetTaskByID_EmptyID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 
@@ -174,7 +174,7 @@ func TestService_GetTaskBySlug_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	slug := "test-task"
@@ -208,7 +208,7 @@ func TestService_GetTaskBySlug_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	slug := "non-existent-slug"
@@ -229,7 +229,7 @@ func TestService_DeleteTask_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	taskID := "550e8400-e29b-41d4-a716-446655440000"
@@ -250,7 +250,7 @@ func TestService_DeleteTask_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	taskID := "non-existent-id"
@@ -271,7 +271,7 @@ func TestService_ListTasks_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 	expectedTasks := []Task{
@@ -309,7 +309,7 @@ func TestService_ListTasks_InvalidLimit(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 
@@ -325,7 +325,7 @@ func TestService_ListTasks_InvalidOffset(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := NewMockRepositoryInterface(ctrl)
-	svc := NewService(mockRepo)
+	svc := NewService(mockRepo, nil)
 
 	ctx := context.Background()
 

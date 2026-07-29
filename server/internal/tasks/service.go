@@ -5,14 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/meytardzhevtd/CodeTest/pkg/storage"
 )
 
 type Service struct {
-	repo RepositoryInterface
+	repo  RepositoryInterface
+	store storage.Writer
 }
 
-func NewService(repo RepositoryInterface) *Service {
-	return &Service{repo: repo}
+func NewService(repo RepositoryInterface, store storage.Writer) *Service {
+	return &Service{repo: repo, store: store}
 }
 
 func (s *Service) CreateTask(ctx context.Context, userID string, req CreateTaskRequest) (Task, error) {
