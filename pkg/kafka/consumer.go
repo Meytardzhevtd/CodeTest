@@ -17,7 +17,7 @@ func NewConsumer(brokers []string, topic, groupID string) *Consumer {
 		Brokers:     brokers,
 		Topic:       topic,
 		GroupID:     groupID,
-		StartOffset: kafka.LastOffset,
+		StartOffset: kafka.FirstOffset,
 		MinBytes:    10e3,
 		MaxBytes:    10e6,
 		MaxWait:     1 * time.Second,

@@ -87,6 +87,10 @@ func main() {
 	taskService := tasksinternal.NewService(taskRepo, storageClient)
 	taskHandler := tasksinternal.NewHandler(taskService)
 
+	if err := kafka.EnsureTopics(ctx, cfg.KafkaBrokers, kafka.TopicSubmissions, kafka.TopicResults); err != nil {
+		log.Fatalf("ensure kafka topics: %v", err)
+	}
+
 	submissionsProducer := kafka.NewProducer(cfg.KafkaBrokers, kafka.TopicSubmissions)
 	defer submissionsProducer.Close()
 

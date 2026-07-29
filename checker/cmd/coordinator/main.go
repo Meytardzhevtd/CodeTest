@@ -29,6 +29,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if err := kafka.EnsureTopics(ctx, cfg.KafkaBrokers, kafka.TopicSubmissions, kafka.TopicResults); err != nil {
+		log.Fatalf("ensure kafka topics: %v", err)
+	}
+
 	producer := kafka.NewProducer(cfg.KafkaBrokers, kafka.TopicResults)
 	defer producer.Close()
 
