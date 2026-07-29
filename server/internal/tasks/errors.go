@@ -10,4 +10,6 @@ var (
 	ErrInvalidOffset     = errors.New("offset must be non-negative")
 	ErrForbidden         = errors.New("forbidden: not the task creator")
 	ErrInvalidArchive    = errors.New("invalid tests archive")
+	ErrNoTagsProvided    = errors.New("at least one tag must be provided")
+	ErrInvalidTagName    = errors.New("invalid tag name: must be 1-50 characters")
 )

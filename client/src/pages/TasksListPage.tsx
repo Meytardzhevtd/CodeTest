@@ -109,6 +109,15 @@ export function TasksListPage() {
                 <span className="task-slug">{task.slug}</span>
               </div>
               <h2>{task.title}</h2>
+              {task.tags.length > 0 ? (
+                <div className="task-tags">
+                  {task.tags.map((tag) => (
+                    <span className="task-tag" key={tag}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <p className="task-excerpt">{excerpt(task.statement, 120)}</p>
               <div className="task-meta">
                 <span>⏱ {task.time_limit_ms} мс</span>

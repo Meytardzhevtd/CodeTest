@@ -40,6 +40,21 @@ func (m *MockRepositoryInterface) EXPECT() *MockRepositoryInterfaceMockRecorder 
 	return m.recorder
 }
 
+// AddTagsToTask mocks base method.
+func (m *MockRepositoryInterface) AddTagsToTask(ctx context.Context, taskID string, tagNames []string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddTagsToTask", ctx, taskID, tagNames)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddTagsToTask indicates an expected call of AddTagsToTask.
+func (mr *MockRepositoryInterfaceMockRecorder) AddTagsToTask(ctx, taskID, tagNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTagsToTask", reflect.TypeOf((*MockRepositoryInterface)(nil).AddTagsToTask), ctx, taskID, tagNames)
+}
+
 // CreateTask mocks base method.
 func (m *MockRepositoryInterface) CreateTask(ctx context.Context, task Task) (Task, error) {
 	m.ctrl.T.Helper()

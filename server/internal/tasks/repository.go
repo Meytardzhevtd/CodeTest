@@ -16,6 +16,7 @@ type RepositoryInterface interface {
 	ListTasks(ctx context.Context, limit, offset int) ([]Task, int, error)
 	UpdateTask(ctx context.Context, id string, updates Task) (Task, error)
 	DeleteTask(ctx context.Context, id string) error
+	AddTagsToTask(ctx context.Context, taskID string, tagNames []string) ([]string, error)
 }
 
 type Repository struct {
@@ -77,6 +78,9 @@ func (r *Repository) GetTaskByID(ctx context.Context, id string) (Task, error) {
 		}
 		return Task{}, fmt.Errorf("get task by id: %w", err)
 	}
+	if err := r.attachTags(ctx, []*Task{&task}); err != nil {
+		return Task{}, err
+	}
 	return task, nil
 }
 
@@ -103,6 +107,9 @@ func (r *Repository) GetTaskBySlug(ctx context.Context, slug string) (Task, erro
 			return Task{}, ErrTaskNotFound
 		}
 		return Task{}, fmt.Errorf("get task by slug: %w", err)
+	}
+	if err := r.attachTags(ctx, []*Task{&task}); err != nil {
+		return Task{}, err
 	}
 	return task, nil
 }
@@ -144,6 +151,14 @@ func (r *Repository) ListTasks(ctx context.Context, limit, offset int) ([]Task, 
 
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("rows error: %w", err)
+	}
+
+	ptrs := make([]*Task, len(tasks))
+	for i := range tasks {
+		ptrs[i] = &tasks[i]
+	}
+	if err := r.attachTags(ctx, ptrs); err != nil {
+		return nil, 0, err
 	}
 
 	var total int
@@ -202,6 +217,86 @@ func (r *Repository) DeleteTask(ctx context.Context, id string) error {
 		return ErrTaskNotFound
 	}
 	return nil
+}
+
+// attachTags fetches tags for the given tasks in a single query and fills
+// in each task's Tags field (in place, hence the pointers).
+func (r *Repository) attachTags(ctx context.Context, tasks []*Task) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	ids := make([]string, len(tasks))
+	byID := make(map[string]*Task, len(tasks))
+	for i, t := range tasks {
+		ids[i] = t.ID
+		byID[t.ID] = t
+		t.Tags = []string{}
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT tt.task_id, t.name
+		FROM task_tags tt
+		JOIN tags t ON t.id = tt.tag_id
+		WHERE tt.task_id = ANY($1)
+		ORDER BY t.name
+	`, ids)
+	if err != nil {
+		return fmt.Errorf("attach tags: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var taskID, name string
+		if err := rows.Scan(&taskID, &name); err != nil {
+			return fmt.Errorf("scan task tag: %w", err)
+		}
+		if t, ok := byID[taskID]; ok {
+			t.Tags = append(t.Tags, name)
+		}
+	}
+	return rows.Err()
+}
+
+// AddTagsToTask creates any tags that don't already exist (by name) and
+// attaches all of them to the task, then returns the task's full tag list.
+func (r *Repository) AddTagsToTask(ctx context.Context, taskID string, tagNames []string) ([]string, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	for _, name := range tagNames {
+		var tagID string
+		// ON CONFLICT DO UPDATE (a no-op change) so RETURNING still yields the
+		// existing row's id when the tag already exists.
+		err := tx.QueryRow(ctx, `
+			INSERT INTO tags (name) VALUES ($1)
+			ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+			RETURNING id
+		`, name).Scan(&tagID)
+		if err != nil {
+			return nil, fmt.Errorf("get or create tag %q: %w", name, err)
+		}
+
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2)
+			ON CONFLICT DO NOTHING
+		`, taskID, tagID); err != nil {
+			return nil, fmt.Errorf("attach tag %q to task: %w", name, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	task := &Task{ID: taskID}
+	if err := r.attachTags(ctx, []*Task{task}); err != nil {
+		return nil, err
+	}
+	return task.Tags, nil
 }
 
 func isUniqueViolation(err error, constraint string) bool {

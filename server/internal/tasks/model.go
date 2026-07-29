@@ -22,8 +22,24 @@ type Task struct {
 	Difficulty    Difficulty `json:"difficulty"`
 	TimeLimitMs   int        `json:"time_limit_ms"`
 	MemoryLimitMb int        `json:"memory_limit_mb"`
+	Tags          []string   `json:"tags"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// Tag is a single label a task can be marked with. Name doubles as the
+// tag's slug - it's normalized (lowercase, spaces to dashes) and unique.
+type Tag struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type AddTagsRequest struct {
+	Tags []string `json:"tags"`
+}
+
+type AddTagsResponse struct {
+	Tags []string `json:"tags"`
 }
 
 type CreateTaskRequest struct {

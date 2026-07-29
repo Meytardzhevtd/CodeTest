@@ -26,6 +26,7 @@ export interface Task {
   difficulty: Difficulty
   time_limit_ms: number
   memory_limit_mb: number
+  tags: string[]
   created_by: string
   created_by_username: string
   created_at: string
@@ -50,4 +51,8 @@ export interface CreateTaskRequest {
 
 export interface UploadTestsResponse {
   tests_uploaded: number
+}
+
+export interface AddTagsResponse {
+  tags: string[]
 }

@@ -1,4 +1,5 @@
 import type {
+  AddTagsResponse,
   AuthResponse,
   CreateTaskRequest,
   ProfileResponse,
@@ -102,4 +103,10 @@ export const tasksApi = {
       body: formData,
     })
   },
+
+  addTags: (taskId: string, tags: string[]) =>
+    request<AddTagsResponse>(`/api/tasks/${encodeURIComponent(taskId)}/tags`, {
+      method: 'POST',
+      body: JSON.stringify({ tags }),
+    }),
 }

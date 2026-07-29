@@ -104,6 +104,15 @@ export function TaskDetailPage({ slug }: { slug: string }) {
             <span className="task-slug">{task.slug}</span>
           </div>
           <h1>{task.title}</h1>
+          {task.tags.length > 0 ? (
+            <div className="task-tags">
+              {task.tags.map((tag) => (
+                <span className="task-tag" key={tag}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <p className="task-statement-text">{task.statement}</p>
           <div className="task-limits">
             <div>

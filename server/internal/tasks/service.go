@@ -113,6 +113,62 @@ func (s *Service) DeleteTask(ctx context.Context, id string) error {
 	return nil
 }
 
+// AddTagsToTask attaches tags to a task, creating any that don't already
+// exist. Only the task's creator may do this.
+func (s *Service) AddTagsToTask(ctx context.Context, userID, taskID string, tagNames []string) ([]string, error) {
+	if taskID == "" {
+		return nil, errors.New("task id cannot be empty")
+	}
+
+	names, err := normalizeTagNames(tagNames)
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, ErrNoTagsProvided
+	}
+
+	task, err := s.repo.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, fmt.Errorf("get task by id: %w", err)
+	}
+	if task.CreatedBy != userID {
+		return nil, ErrForbidden
+	}
+
+	tags, err := s.repo.AddTagsToTask(ctx, taskID, names)
+	if err != nil {
+		return nil, fmt.Errorf("add tags to task: %w", err)
+	}
+
+	return tags, nil
+}
+
+func normalizeTagNames(names []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(names))
+	normalized := make([]string, 0, len(names))
+
+	for _, raw := range names {
+		name := normalizeSlug(raw)
+		if name == "" {
+			continue
+		}
+		if len(name) > 50 {
+			return nil, ErrInvalidTagName
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		normalized = append(normalized, name)
+	}
+
+	return normalized, nil
+}
+
 func validateCreateTask(req CreateTaskRequest) error {
 	if strings.TrimSpace(req.Slug) == "" {
 		return errors.New("slug is required")
