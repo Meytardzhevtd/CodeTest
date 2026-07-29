@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/meytardzhevtd/CodeTest/server/internal/auth"
 )
 
 type Handler struct {
@@ -29,13 +30,19 @@ func (h *Handler) Routes() http.Handler {
 }
 
 func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req CreateTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	task, err := h.service.CreateTask(r.Context(), req)
+	task, err := h.service.CreateTask(r.Context(), userId, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrSlugAlreadyExists):

@@ -17,6 +17,8 @@ type Task struct {
 	Slug          string     `json:"slug"`
 	Title         string     `json:"title"`
 	Statement     string     `json:"statement"`
+	CreatedBy     string     `json:"created_by"`
+	CreatedByName string     `json:"created_by_username"`
 	Difficulty    Difficulty `json:"difficulty"`
 	TimeLimitMs   int        `json:"time_limit_ms"`
 	MemoryLimitMb int        `json:"memory_limit_mb"`

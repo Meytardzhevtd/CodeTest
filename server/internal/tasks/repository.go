@@ -29,10 +29,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) CreateTask(ctx context.Context, task Task) (Task, error) {
 	var created Task
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO tasks (slug, title, statement, difficulty, time_limit_ms, memory_limit_mb)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_at, updated_at
-	`, task.Slug, task.Title, task.Statement, task.Difficulty, task.TimeLimitMs, task.MemoryLimitMb).Scan(
+		INSERT INTO tasks (slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_by, created_at, updated_at
+	`, task.Slug, task.Title, task.Statement, task.Difficulty, task.TimeLimitMs, task.MemoryLimitMb, task.CreatedBy).Scan(
 		&created.ID,
 		&created.Slug,
 		&created.Title,
@@ -40,6 +40,7 @@ func (r *Repository) CreateTask(ctx context.Context, task Task) (Task, error) {
 		&created.Difficulty,
 		&created.TimeLimitMs,
 		&created.MemoryLimitMb,
+		&created.CreatedBy,
 		&created.CreatedAt,
 		&created.UpdatedAt,
 	)
@@ -55,7 +56,7 @@ func (r *Repository) CreateTask(ctx context.Context, task Task) (Task, error) {
 func (r *Repository) GetTaskByID(ctx context.Context, id string) (Task, error) {
 	var task Task
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_at, updated_at
+		SELECT id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_by, created_at, updated_at
 		FROM tasks
 		WHERE id = $1
 	`, id).Scan(
@@ -66,6 +67,7 @@ func (r *Repository) GetTaskByID(ctx context.Context, id string) (Task, error) {
 		&task.Difficulty,
 		&task.TimeLimitMs,
 		&task.MemoryLimitMb,
+		&task.CreatedBy,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	)
@@ -81,7 +83,7 @@ func (r *Repository) GetTaskByID(ctx context.Context, id string) (Task, error) {
 func (r *Repository) GetTaskBySlug(ctx context.Context, slug string) (Task, error) {
 	var task Task
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_at, updated_at
+		SELECT id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_by, created_at, updated_at
 		FROM tasks
 		WHERE slug = $1
 	`, slug).Scan(
@@ -92,6 +94,7 @@ func (r *Repository) GetTaskBySlug(ctx context.Context, slug string) (Task, erro
 		&task.Difficulty,
 		&task.TimeLimitMs,
 		&task.MemoryLimitMb,
+		&task.CreatedBy,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	)
@@ -107,9 +110,11 @@ func (r *Repository) GetTaskBySlug(ctx context.Context, slug string) (Task, erro
 func (r *Repository) ListTasks(ctx context.Context, limit, offset int) ([]Task, int, error) {
 	tasks := []Task{}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_at, updated_at
-		FROM tasks
-		ORDER BY created_at DESC
+		SELECT t.id, t.slug, t.title, t.statement, t.difficulty, t.time_limit_ms, t.memory_limit_mb,
+		       t.created_by, u.username, t.created_at, t.updated_at
+		FROM tasks t
+		JOIN users u ON u.id = t.created_by
+		ORDER BY t.created_at DESC
 		LIMIT $1 OFFSET $2
 	`, limit, offset)
 	if err != nil {
@@ -127,6 +132,8 @@ func (r *Repository) ListTasks(ctx context.Context, limit, offset int) ([]Task, 
 			&task.Difficulty,
 			&task.TimeLimitMs,
 			&task.MemoryLimitMb,
+			&task.CreatedBy,
+			&task.CreatedByName,
 			&task.CreatedAt,
 			&task.UpdatedAt,
 		); err != nil {
@@ -161,7 +168,7 @@ func (r *Repository) UpdateTask(ctx context.Context, id string, updates Task) (T
 			memory_limit_mb = COALESCE($7, memory_limit_mb),
 			updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_at, updated_at
+		RETURNING id, slug, title, statement, difficulty, time_limit_ms, memory_limit_mb, created_by, created_at, updated_at
 	`, id, updates.Slug, updates.Title, updates.Statement, updates.Difficulty, updates.TimeLimitMs, updates.MemoryLimitMb).Scan(
 		&task.ID,
 		&task.Slug,
@@ -170,6 +177,7 @@ func (r *Repository) UpdateTask(ctx context.Context, id string, updates Task) (T
 		&task.Difficulty,
 		&task.TimeLimitMs,
 		&task.MemoryLimitMb,
+		&task.CreatedBy,
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	)

@@ -29,6 +29,7 @@ func TestService_CreateTask_Success(t *testing.T) {
 		Slug:          "test-task",
 		Title:         "Test Task",
 		Statement:     "Some statement",
+		CreatedBy:     "user-1",
 		Difficulty:    DifficultyEasy,
 		TimeLimitMs:   1000,
 		MemoryLimitMb: 256,
@@ -38,7 +39,7 @@ func TestService_CreateTask_Success(t *testing.T) {
 		CreateTask(gomock.Any(), gomock.Any()).
 		Return(expectedTask, nil)
 
-	created, err := svc.CreateTask(ctx, req)
+	created, err := svc.CreateTask(ctx, "user-1", req)
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -69,7 +70,7 @@ func TestService_CreateTask_SlugAlreadyExists(t *testing.T) {
 		CreateTask(gomock.Any(), gomock.Any()).
 		Return(Task{}, ErrSlugAlreadyExists)
 
-	_, err := svc.CreateTask(ctx, req)
+	_, err := svc.CreateTask(ctx, "user-1", req)
 
 	if !errors.Is(err, ErrSlugAlreadyExists) {
 		t.Errorf("expected ErrSlugAlreadyExists, got %v", err)
@@ -90,7 +91,7 @@ func TestService_CreateTask_ValidationError(t *testing.T) {
 		Statement: "",
 	}
 
-	_, err := svc.CreateTask(ctx, req)
+	_, err := svc.CreateTask(ctx, "user-1", req)
 
 	if err == nil {
 		t.Error("expected validation error, got nil")

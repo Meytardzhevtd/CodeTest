@@ -15,7 +15,7 @@ func NewService(repo RepositoryInterface) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) CreateTask(ctx context.Context, req CreateTaskRequest) (Task, error) {
+func (s *Service) CreateTask(ctx context.Context, userID string, req CreateTaskRequest) (Task, error) {
 	if err := validateCreateTask(req); err != nil {
 		return Task{}, err
 	}
@@ -29,6 +29,7 @@ func (s *Service) CreateTask(ctx context.Context, req CreateTaskRequest) (Task, 
 		Slug:          slug,
 		Title:         title,
 		Statement:     statement,
+		CreatedBy:     userID,
 		Difficulty:    difficulty,
 		TimeLimitMs:   req.TimeLimitMs,
 		MemoryLimitMb: req.MemoryLimitMb,

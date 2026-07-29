@@ -3,6 +3,7 @@ import { ApiError, tasksApi } from '../api'
 import type { Task } from '../types'
 import { DifficultyBadge } from '../components/DifficultyBadge'
 import { Link } from '../router'
+import { useAuth } from '../context/AuthContext'
 
 function excerpt(text: string, length: number): string {
   const trimmed = text.trim()
@@ -13,10 +14,12 @@ function excerpt(text: string, length: number): string {
 }
 
 export function TasksListPage() {
+  const { user } = useAuth()
   const [tasks, setTasks] = useState<Task[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [onlyMine, setOnlyMine] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -41,6 +44,8 @@ export function TasksListPage() {
     }
   }, [])
 
+  const visibleTasks = onlyMine ? tasks.filter((task) => task.created_by === user?.id) : tasks
+
   return (
     <div className="page">
       <div className="page-header">
@@ -53,6 +58,17 @@ export function TasksListPage() {
           + Новая задача
         </Link>
       </div>
+
+      {!loading && !error && tasks.length > 0 ? (
+        <label className="filter-checkbox">
+          <input
+            type="checkbox"
+            checked={onlyMine}
+            onChange={(event) => setOnlyMine(event.target.checked)}
+          />
+          Мои задачи
+        </label>
+      ) : null}
 
       {loading ? (
         <div className="task-grid">
@@ -78,9 +94,15 @@ export function TasksListPage() {
         </div>
       ) : null}
 
-      {!loading && !error && tasks.length > 0 ? (
+      {!loading && !error && tasks.length > 0 && visibleTasks.length === 0 ? (
+        <div className="empty-state">
+          <p>Среди своих задач ничего не нашлось.</p>
+        </div>
+      ) : null}
+
+      {!loading && !error && visibleTasks.length > 0 ? (
         <div className="task-grid">
-          {tasks.map((task) => (
+          {visibleTasks.map((task) => (
             <Link to={`/tasks/${task.id}`} key={task.id} className="task-card">
               <div className="task-card-top">
                 <DifficultyBadge difficulty={task.difficulty} />
@@ -92,6 +114,7 @@ export function TasksListPage() {
                 <span>⏱ {task.time_limit_ms} мс</span>
                 <span>▢ {task.memory_limit_mb} МБ</span>
               </div>
+              <span className="task-creator">от {task.created_by_username}</span>
             </Link>
           ))}
         </div>

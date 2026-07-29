@@ -436,6 +436,28 @@
   font-family: var(--mono);
 }
 
+.task-creator {
+  font-size: 0.72rem;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.filter-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 4px;
+  width: fit-content;
+}
+
+.filter-checkbox input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
