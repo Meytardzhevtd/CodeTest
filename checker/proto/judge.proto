@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package judge.v1;
+
+option go_package = "github.com/meytardzhevtd/CodeTest/checker/internal/grpc/judgepb";
+
+service Coordinator {
+  rpc PullTask(PullTaskRequest) returns (PullTaskResponse);
+  rpc SubmitResult(SubmitResultRequest) returns (SubmitResultResponse);
+}
+
+message PullTaskRequest {
+}
+
+message PullTaskResponse {
+  Task task = 1;
+}
+
+message Task {
+  string submission_id = 1;
+  string language = 3;
+  string code = 4;
+  repeated TestCase test_cases = 5;
+}
+
+message TestCase {
+  int32 number = 1;
+  string input = 2;
+  string expected_output = 3;
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_OK = 1;
+  STATUS_WA = 2;
+  STATUS_RE = 3;
+  STATUS_CE = 4;
+  STATUS_TL = 5;
+  STATUS_ML = 6;
+  STATUS_ERROR = 7;
+}
+
+message SubmitResultRequest {
+  string submission_id = 2;
+  Status status = 3;
+  string output = 4;
+  string error = 5;
+}
+
+message SubmitResultResponse {
+  bool accepted = 1;
+}
