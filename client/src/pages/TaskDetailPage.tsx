@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError, submitApi, tasksApi } from '../api'
 import type { Submission, Task } from '../types'
+import { CodeEditor } from '../components/CodeEditor'
 import { DifficultyBadge } from '../components/DifficultyBadge'
 import { SubmissionHistoryModal } from '../components/SubmissionHistoryModal'
 import { TestsUploadCard } from '../components/TestsUploadCard'
@@ -200,14 +201,7 @@ export function TaskDetailPage({ slug }: { slug: string }) {
             </div>
           </div>
 
-          <textarea
-            className="code-input"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            placeholder="// Ваше решение..."
-            rows={16}
-            spellCheck={false}
-          />
+          <CodeEditor value={code} onChange={setCode} language={language} />
 
           <div className="task-submit-footer">
             <button

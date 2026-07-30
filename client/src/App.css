@@ -107,18 +107,24 @@
   box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
-.statement-input,
-.code-input {
+.statement-input {
   font-family: var(--mono);
   font-size: 0.85rem;
   resize: vertical;
   line-height: 1.5;
 }
 
-.code-input {
-  background: var(--code-bg);
+.code-editor {
   flex: 1;
-  min-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
 }
 
 /* Buttons */
