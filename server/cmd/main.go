@@ -38,7 +38,7 @@ type config struct {
 	MinioAccessKey      string `env:"MINIO_ACCESS_KEY,required"`
 	MinioSecretKey      string `env:"MINIO_SECRET_KEY,required"`
 	MinioBucket         string `env:"MINIO_BUCKET,required"`
-	MinioAvatarBucket   string `env:"MINIO_AVATAR_BUCKET,required"`
+	MinioAvatarBucket   string `env:"MINIO_AVATAR_BUCKET" envDefault:"codetest-avatars"`
 	MinioUseSSL         bool   `env:"MINIO_USE_SSL"`
 
 	KafkaBrokers []string `env:"KAFKA_BROKERS" envSeparator:"," envDefault:"localhost:9092"`
