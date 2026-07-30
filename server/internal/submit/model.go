@@ -52,3 +52,17 @@ type ListSubmissionsResponse struct {
 	Submissions []Submission `json:"submissions"`
 	Total       int          `json:"total"`
 }
+
+// SubmissionHistoryItem — краткая сводка по одной посылке для истории по задаче.
+// Number — это не ID из БД, а порядковый номер посылки пользователя по этой
+// задаче (1..n в хронологическом порядке), удобный для отображения в UI.
+type SubmissionHistoryItem struct {
+	Number   int    `json:"number"`
+	ID       string `json:"id"`
+	Status   Status `json:"status"`
+	Language string `json:"language"`
+}
+
+type SubmissionHistoryResponse struct {
+	Submissions []SubmissionHistoryItem `json:"submissions"`
+}

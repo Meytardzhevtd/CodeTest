@@ -191,6 +191,43 @@ func TestService_HandleResult_Success(t *testing.T) {
 	}
 }
 
+func TestService_GetSubmissionHistory_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockRepositoryInterface(ctrl)
+	mockProducer := NewMockProducerInterface(ctrl)
+	svc := NewService(mockRepo, mockProducer)
+
+	ctx := context.Background()
+	userID := "user-1"
+	taskID := "task-1"
+
+	subs := []Submission{
+		{ID: "sub-1", UserID: userID, TaskID: taskID, Language: "python", Status: StatusWA},
+		{ID: "sub-2", UserID: userID, TaskID: taskID, Language: "go", Status: StatusOK},
+	}
+
+	mockRepo.EXPECT().
+		ListByUserAndTaskID(gomock.Any(), gomock.Eq(userID), gomock.Eq(taskID)).
+		Return(subs, nil)
+
+	resp, err := svc.GetSubmissionHistory(ctx, userID, taskID)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(resp.Submissions) != 2 {
+		t.Fatalf("expected 2 submissions, got %d", len(resp.Submissions))
+	}
+	if resp.Submissions[0].Number != 1 || resp.Submissions[0].ID != "sub-1" || resp.Submissions[0].Status != StatusWA {
+		t.Errorf("unexpected first item: %+v", resp.Submissions[0])
+	}
+	if resp.Submissions[1].Number != 2 || resp.Submissions[1].ID != "sub-2" || resp.Submissions[1].Status != StatusOK {
+		t.Errorf("unexpected second item: %+v", resp.Submissions[1])
+	}
+}
+
 func TestService_HandleResult_MissingSubmissionID(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

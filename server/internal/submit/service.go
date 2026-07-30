@@ -83,6 +83,25 @@ func (s *Service) GetInfoAboutSubmit(ctx context.Context, userID, submitID strin
 	return GetSubmissionResponse{Submission: sub}, nil
 }
 
+func (s *Service) GetSubmissionHistory(ctx context.Context, userID, taskID string) (SubmissionHistoryResponse, error) {
+	subs, err := s.repo.ListByUserAndTaskID(ctx, userID, taskID)
+	if err != nil {
+		return SubmissionHistoryResponse{}, err
+	}
+
+	items := make([]SubmissionHistoryItem, len(subs))
+	for i, sub := range subs {
+		items[i] = SubmissionHistoryItem{
+			Number:   i + 1,
+			ID:       sub.ID,
+			Status:   sub.Status,
+			Language: sub.Language,
+		}
+	}
+
+	return SubmissionHistoryResponse{Submissions: items}, nil
+}
+
 func validateCreateSubmissionRequest(req CreateSubmissionRequest) error {
 	if strings.TrimSpace(req.TaskID) == "" {
 		return errors.New("task_id is required")

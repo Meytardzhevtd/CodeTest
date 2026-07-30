@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { ApiError, submitApi, tasksApi } from '../api'
 import type { Submission, Task } from '../types'
 import { DifficultyBadge } from '../components/DifficultyBadge'
+import { SubmissionHistoryModal } from '../components/SubmissionHistoryModal'
 import { TestsUploadCard } from '../components/TestsUploadCard'
 import { useAuth } from '../context/AuthContext'
 import { useRouter } from '../router'
@@ -37,6 +38,7 @@ export function TaskDetailPage({ slug }: { slug: string }) {
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const [submitError, setSubmitError] = useState('')
   const [verdict, setVerdict] = useState<Submission | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const pollHandle = useRef<number | null>(null)
   const { navigate } = useRouter()
   const { user } = useAuth()
@@ -184,13 +186,18 @@ export function TaskDetailPage({ slug }: { slug: string }) {
         <form className="card task-submit" onSubmit={handleSubmit}>
           <div className="task-submit-header">
             <h2>Решение</h2>
-            <select value={language} onChange={(event) => setLanguage(event.target.value)}>
-              {LANGUAGES.map((lang) => (
-                <option key={lang.value} value={lang.value}>
-                  {lang.label}
-                </option>
-              ))}
-            </select>
+            <div className="task-submit-header-actions">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowHistory(true)}>
+                История посылок
+              </button>
+              <select value={language} onChange={(event) => setLanguage(event.target.value)}>
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <textarea
@@ -224,6 +231,10 @@ export function TaskDetailPage({ slug }: { slug: string }) {
       </div>
 
       {user?.id === task.created_by ? <TestsUploadCard taskId={task.id} /> : null}
+
+      {showHistory ? (
+        <SubmissionHistoryModal taskId={task.id} onClose={() => setShowHistory(false)} />
+      ) : null}
     </div>
   )
 }

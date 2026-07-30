@@ -100,6 +100,21 @@ func (mr *MockRepositoryInterfaceMockRecorder) ListByTaskID(ctx, taskID, limit, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByTaskID", reflect.TypeOf((*MockRepositoryInterface)(nil).ListByTaskID), ctx, taskID, limit, offset)
 }
 
+// ListByUserAndTaskID mocks base method.
+func (m *MockRepositoryInterface) ListByUserAndTaskID(ctx context.Context, userID, taskID string) ([]Submission, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListByUserAndTaskID", ctx, userID, taskID)
+	ret0, _ := ret[0].([]Submission)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListByUserAndTaskID indicates an expected call of ListByUserAndTaskID.
+func (mr *MockRepositoryInterfaceMockRecorder) ListByUserAndTaskID(ctx, userID, taskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByUserAndTaskID", reflect.TypeOf((*MockRepositoryInterface)(nil).ListByUserAndTaskID), ctx, userID, taskID)
+}
+
 // ListByUserID mocks base method.
 func (m *MockRepositoryInterface) ListByUserID(ctx context.Context, userID string, limit, offset int) ([]Submission, int, error) {
 	m.ctrl.T.Helper()

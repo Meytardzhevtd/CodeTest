@@ -86,3 +86,14 @@ export interface CreateSubmissionResponse {
 export interface GetSubmissionResponse {
   submission: Submission
 }
+
+export interface SubmissionHistoryItem {
+  number: number
+  id: string
+  status: SubmissionStatus
+  language: string
+}
+
+export interface SubmissionHistoryResponse {
+  submissions: SubmissionHistoryItem[]
+}

@@ -13,6 +13,7 @@ type RepositoryInterface interface {
 	GetByID(ctx context.Context, id string) (Submission, error)
 	ListByUserID(ctx context.Context, userID string, limit, offset int) ([]Submission, int, error)
 	ListByTaskID(ctx context.Context, taskID string, limit, offset int) ([]Submission, int, error)
+	ListByUserAndTaskID(ctx context.Context, userID, taskID string) ([]Submission, error)
 	UpdateResult(ctx context.Context, id string, status Status, output, errMsg string) (Submission, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -168,6 +169,49 @@ func (r *Repository) ListByTaskID(ctx context.Context, taskID string, limit, off
 	}
 
 	return submissions, total, nil
+}
+
+// ListByUserAndTaskID возвращает все посылки пользователя по конкретной задаче
+// в хронологическом порядке — так первая посылка всегда получает номер 1,
+// независимо от того, сколько посылок появится позже.
+func (r *Repository) ListByUserAndTaskID(ctx context.Context, userID, taskID string) ([]Submission, error) {
+	submissions := []Submission{}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, task_id, user_id, code, language, status, COALESCE(output, ''), COALESCE(error, ''), created_at, updated_at
+		FROM submissions
+		WHERE user_id = $1 AND task_id = $2
+		ORDER BY created_at ASC
+	`, userID, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("list submissions by user and task: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s Submission
+		if err := rows.Scan(
+			&s.ID,
+			&s.TaskID,
+			&s.UserID,
+			&s.Code,
+			&s.Language,
+			&s.Status,
+			&s.Output,
+			&s.Error,
+			&s.CreatedAt,
+			&s.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan submission: %w", err)
+		}
+		submissions = append(submissions, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return submissions, nil
 }
 
 func (r *Repository) UpdateResult(ctx context.Context, id string, status Status, output, errMsg string) (Submission, error) {

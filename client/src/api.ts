@@ -6,6 +6,7 @@ import type {
   CreateTaskRequest,
   GetSubmissionResponse,
   ProfileResponse,
+  SubmissionHistoryResponse,
   Task,
   TaskListResponse,
   UploadTestsResponse,
@@ -122,4 +123,7 @@ export const submitApi = {
     }),
 
   get: (id: string) => request<GetSubmissionResponse>(`/api/submit?id=${encodeURIComponent(id)}`),
+
+  history: (taskId: string) =>
+    request<SubmissionHistoryResponse>(`/api/submit/history?task_id=${encodeURIComponent(taskId)}`),
 }

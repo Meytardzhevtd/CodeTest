@@ -24,6 +24,7 @@ func (h *Handler) Routes() http.Handler {
 
 	r.Post("/", h.Submit)
 	r.Get("/", h.GetInfoAboutSubmit)
+	r.Get("/history", h.GetSubmissionHistory)
 
 	return r
 }
@@ -72,6 +73,27 @@ func (h *Handler) GetInfoAboutSubmit(w http.ResponseWriter, r *http.Request) {
 		default:
 			writeError(w, http.StatusInternalServerError, "internal server error")
 		}
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) GetSubmissionHistory(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	taskID := r.URL.Query().Get("task_id")
+	if taskID == "" {
+		writeError(w, http.StatusBadRequest, "task_id is required")
+		return
+	}
+
+	response, err := h.service.GetSubmissionHistory(r.Context(), userId, taskID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
