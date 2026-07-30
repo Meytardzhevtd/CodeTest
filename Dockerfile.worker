@@ -7,14 +7,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/coordinator ./checker/cmd/coordinator
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/worker ./checker/cmd/worker
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
-COPY --from=builder /out/coordinator /app/bin/coordinator
+COPY --from=builder /out/worker /app/bin/worker
 
-EXPOSE 50051
-
-ENTRYPOINT ["/app/bin/coordinator"]
+ENTRYPOINT ["/app/bin/worker"]

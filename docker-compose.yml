@@ -86,13 +86,29 @@ services:
       context: .
       dockerfile: Dockerfile.coordinator
     container_name: codetest-coordinator
+    ports:
+      - "50051:50051"
     env_file:
       - .env
     environment:
       KAFKA_BROKERS: kafka:29092
+      GRPC_ADDR: :50051
     depends_on:
       kafka:
         condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file:
+      - .env
+    environment:
+      COORDINATOR_ADDR: coordinator:50051
+    depends_on:
+      - coordinator
+    deploy:
+      replicas: 3
 
 volumes:
   postgres-data:
