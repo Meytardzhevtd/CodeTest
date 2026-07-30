@@ -1,7 +1,10 @@
-import { useState } from 'react'
-import type { FormEvent } from 'react'
+import { useRef, useState } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { ApiError, authApi } from '../api'
+
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 export function ProfilePage() {
   const { user, setUser } = useAuth()
@@ -11,6 +14,35 @@ export function ProfilePage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
+  const [avatarError, setAvatarError] = useState('')
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setAvatarError('')
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+      setAvatarError('Поддерживаются только JPEG, PNG и WebP')
+      return
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarError('Файл слишком большой (максимум 5 МБ)')
+      return
+    }
+
+    setAvatarUploading(true)
+    try {
+      const res = await authApi.uploadAvatar(file)
+      setUser(res.user)
+    } catch (err) {
+      setAvatarError(err instanceof ApiError ? err.message : 'Не удалось загрузить аватарку')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -48,6 +80,33 @@ export function ProfilePage() {
       <div className="profile-grid">
         <div className="card">
           <h2>Данные аккаунта</h2>
+          <div className="profile-avatar">
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="Аватарка" className="profile-avatar-img" />
+            ) : (
+              <div className="profile-avatar-placeholder">
+                {(user?.username ?? '?').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={avatarUploading}
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                {avatarUploading ? 'Загрузка...' : 'Загрузить аватарку'}
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={handleAvatarChange}
+              />
+              {avatarError ? <div className="alert alert-error">{avatarError}</div> : null}
+            </div>
+          </div>
           <div className="profile-info">
             <div>
               <span>Email</span>

@@ -15,7 +15,14 @@ type Writer interface {
 	DeleteTask(ctx context.Context, taskID string) error
 }
 
+type AvatarStore interface {
+	UploadAvatar(ctx context.Context, userID string, data io.Reader, size int64, contentType string) (string, error)
+	DeleteAvatar(ctx context.Context, key string) error
+	PublicURL(key string) string
+}
+
 var (
-	_ Reader = (*Client)(nil)
-	_ Writer = (*Client)(nil)
+	_ Reader      = (*Client)(nil)
+	_ Writer      = (*Client)(nil)
+	_ AvatarStore = (*Client)(nil)
 )

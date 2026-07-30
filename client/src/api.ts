@@ -85,6 +85,15 @@ export const authApi = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+
+  uploadAvatar: (file: File) => {
+    const formData = new FormData()
+    formData.append('avatar', file)
+    return request<ProfileResponse>('/api/auth/avatar', {
+      method: 'POST',
+      body: formData,
+    })
+  },
 }
 
 export const tasksApi = {

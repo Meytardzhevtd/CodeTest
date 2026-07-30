@@ -33,11 +33,13 @@ type config struct {
 	JWTRefreshSecret string `env:"JWT_REFRESH_SECRET,required"`
 	JWTIssuer        string `env:"JWT_ISSUER"`
 
-	MinioEndpoint  string `env:"MINIO_ENDPOINT,required"`
-	MinioAccessKey string `env:"MINIO_ACCESS_KEY,required"`
-	MinioSecretKey string `env:"MINIO_SECRET_KEY,required"`
-	MinioBucket    string `env:"MINIO_BUCKET,required"`
-	MinioUseSSL    bool   `env:"MINIO_USE_SSL"`
+	MinioEndpoint       string `env:"MINIO_ENDPOINT,required"`
+	MinioPublicEndpoint string `env:"MINIO_PUBLIC_ENDPOINT"`
+	MinioAccessKey      string `env:"MINIO_ACCESS_KEY,required"`
+	MinioSecretKey      string `env:"MINIO_SECRET_KEY,required"`
+	MinioBucket         string `env:"MINIO_BUCKET,required"`
+	MinioAvatarBucket   string `env:"MINIO_AVATAR_BUCKET,required"`
+	MinioUseSSL         bool   `env:"MINIO_USE_SSL"`
 
 	KafkaBrokers []string `env:"KAFKA_BROKERS" envSeparator:"," envDefault:"localhost:9092"`
 }
@@ -79,8 +81,23 @@ func main() {
 		log.Fatalf("ensure storage bucket: %v", err)
 	}
 
+	avatarStorageClient, err := storage.NewClient(storage.Config{
+		Endpoint:       cfg.MinioEndpoint,
+		PublicEndpoint: cfg.MinioPublicEndpoint,
+		AccessKey:      cfg.MinioAccessKey,
+		SecretKey:      cfg.MinioSecretKey,
+		Bucket:         cfg.MinioAvatarBucket,
+		UseSSL:         cfg.MinioUseSSL,
+	})
+	if err != nil {
+		log.Fatalf("create avatar storage client: %v", err)
+	}
+	if err := avatarStorageClient.EnsurePublicBucket(ctx); err != nil {
+		log.Fatalf("ensure avatar storage bucket: %v", err)
+	}
+
 	authRepo := authinternal.NewRepository(pool)
-	authService := authinternal.NewService(authRepo)
+	authService := authinternal.NewService(authRepo, avatarStorageClient)
 	authHandler := authinternal.NewHandler(authService)
 
 	taskRepo := tasksinternal.NewRepository(pool)

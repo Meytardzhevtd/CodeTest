@@ -29,6 +29,7 @@ func (h *Handler) Routes() http.Handler {
 		protected.Use(AuthMiddleware(h.service))
 		protected.Get("/me", h.Me)
 		protected.Put("/profile", h.UpdateProfile)
+		protected.Post("/avatar", h.UploadAvatar)
 	})
 
 	return r
@@ -141,6 +142,44 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 		default:
 			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	userID, ok := UserIDFromContext(r.Context())
+	if !ok || userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, MaxAvatarBytes)
+	if err := r.ParseMultipartForm(MaxAvatarBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "avatar is too large or the request is not a valid multipart form")
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	file, header, err := r.FormFile("avatar")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, `missing "avatar" file field`)
+		return
+	}
+	defer file.Close()
+
+	contentType := header.Header.Get("Content-Type")
+	user, err := h.service.UploadAvatar(r.Context(), userID, file, header.Size, contentType)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidAvatar):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, ErrInvalidCredentials):
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+		default:
+			writeError(w, http.StatusInternalServerError, "something went wrong")
 		}
 		return
 	}

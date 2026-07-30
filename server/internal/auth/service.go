@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -11,16 +12,29 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/meytardzhevtd/CodeTest/pkg/storage"
 )
 
 var (
 	ErrEmailTaken         = errors.New("email already registered")
 	ErrUsernameTaken      = errors.New("username already registered")
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrInvalidAvatar      = errors.New("invalid avatar")
 )
+
+// MaxAvatarBytes caps the size of an uploaded avatar image.
+const MaxAvatarBytes = 5 << 20 // 5 MiB
+
+var allowedAvatarContentTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
+}
 
 type Service struct {
 	repo            *Repository
+	avatars         storage.AvatarStore
 	accessSecret    string
 	refreshSecret   string
 	accessTTL       time.Duration
@@ -30,7 +44,7 @@ type Service struct {
 	refreshTokenTTL int64
 }
 
-func NewService(repo *Repository) *Service {
+func NewService(repo *Repository, avatars storage.AvatarStore) *Service {
 	accessTTL := 15 * time.Minute
 	refreshTTL := 30 * 24 * time.Hour
 	if v := os.Getenv("JWT_ACCESS_TTL_MINUTES"); v != "" {
@@ -45,6 +59,7 @@ func NewService(repo *Repository) *Service {
 	}
 	return &Service{
 		repo:            repo,
+		avatars:         avatars,
 		accessSecret:    os.Getenv("JWT_ACCESS_SECRET"),
 		refreshSecret:   os.Getenv("JWT_REFRESH_SECRET"),
 		accessTTL:       accessTTL,
@@ -186,6 +201,33 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdatePr
 		if errors.Is(err, ErrUsernameTaken) {
 			return User{}, ErrUsernameTaken
 		}
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Service) UploadAvatar(ctx context.Context, userID string, data io.Reader, size int64, contentType string) (User, error) {
+	if strings.TrimSpace(userID) == "" {
+		return User{}, ErrInvalidCredentials
+	}
+	if size <= 0 || size > MaxAvatarBytes {
+		return User{}, fmt.Errorf("%w: avatar size must be between 1 and %d bytes", ErrInvalidAvatar, MaxAvatarBytes)
+	}
+	if !allowedAvatarContentTypes[contentType] {
+		return User{}, fmt.Errorf("%w: unsupported content type %q, expected JPEG, PNG or WebP", ErrInvalidAvatar, contentType)
+	}
+
+	key, err := s.avatars.UploadAvatar(ctx, userID, data, size, contentType)
+	if err != nil {
+		return User{}, err
+	}
+
+	// Cache-bust: the object is always stored at the same key, so without a
+	// changing query param browsers keep serving the previous avatar.
+	avatarURL := fmt.Sprintf("%s?v=%d", s.avatars.PublicURL(key), time.Now().UnixNano())
+
+	user, err := s.repo.UpdateUserAvatar(ctx, userID, avatarURL)
+	if err != nil {
 		return User{}, err
 	}
 	return user, nil
