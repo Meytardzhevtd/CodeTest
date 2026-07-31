@@ -102,6 +102,14 @@ func (s *Service) GetSubmissionHistory(ctx context.Context, userID, taskID strin
 	return SubmissionHistoryResponse{Submissions: items}, nil
 }
 
+// allowedLanguages — единственные языки, для которых есть воркер, умеющий их
+// проверять (checker/internal/worker/docker.go).
+var allowedLanguages = map[string]bool{
+	"python": true,
+	"cpp":    true,
+	"go":     true,
+}
+
 func validateCreateSubmissionRequest(req CreateSubmissionRequest) error {
 	if strings.TrimSpace(req.TaskID) == "" {
 		return errors.New("task_id is required")
@@ -109,8 +117,8 @@ func validateCreateSubmissionRequest(req CreateSubmissionRequest) error {
 	if strings.TrimSpace(req.Code) == "" {
 		return errors.New("code is required")
 	}
-	if strings.TrimSpace(req.Language) == "" {
-		return errors.New("language is required")
+	if !allowedLanguages[req.Language] {
+		return errors.New("unsupported language")
 	}
 	return nil
 }
