@@ -11,6 +11,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 
@@ -18,23 +19,65 @@ import (
 )
 
 const (
-	pythonImage = "python:3.12-slim"
-
 	// Лимиты пока захардкожены: per-task time_limit_ms/memory_limit_mb лежат
 	// в Postgres, а координатор к ней не подключён и в judgepb.Task эти поля
 	// не передаются. Когда это появится, testTimeLimit/memoryLimitBytes нужно
 	// будет брать из task, а не из констант.
-	testTimeLimit   = 5 * time.Second
-	memoryLimitMiB  = 256
-	execPidsLimit   = 64
-	execCPULimit    = 1_000_000_000 // 1 vCPU, в единицах NanoCPUs
-	solutionPath    = "/tmp/solution.py"
-	dockerCallSlack = 2 * time.Second // запас поверх testTimeLimit на накладные расходы Docker API
+	testTimeLimit = 5 * time.Second
+	// Компиляция Go в контейнере без прогретого GOCACHE собирает с нуля ещё и
+	// стандартную библиотеку — таймаут взят с запасом на этот холодный старт
+	// (см. cacheVolume у "go" в languageSpecs, который делает все последующие
+	// сборки быстрыми за счёт переиспользования кэша между контейнерами).
+	compileTimeLimit = 40 * time.Second
+	memoryLimitMiB   = 256
+	execPidsLimit    = 64
+	execCPULimit     = 1_000_000_000  // 1 vCPU, в единицах NanoCPUs
+	dockerCallSlack  = 2 * time.Second // запас поверх лимита на накладные расходы Docker API
 )
 
-// DockerJudge исполняет Python-сабмишны в изолированных контейнерах через
-// Docker Engine API. Кеширования тест-кейсов тут нет и не должно быть —
-// решение об этом принимается координатором, воркер просто получает готовый
+// languageSpec описывает всё, что нужно воркеру, чтобы собрать (если нужно)
+// и запустить решение на конкретном языке внутри контейнера с этим образом.
+type languageSpec struct {
+	image      string
+	sourceFile string // имя файла с решением внутри контейнера, кладётся в /tmp
+	compileCmd string // пусто — компиляция не нужна (интерпретируемый язык)
+	runCmd     string
+
+	// cacheVolume — именованный Docker-volume, монтируемый в cacheMountPath.
+	// Каждый сабмишн получает свежий контейнер, так что без persistent-тома
+	// компилятору неоткуда взять кэш и каждый раз он собирает всё с нуля.
+	// Для Go это особенно чувствительно: "go build" без прогретого GOCACHE
+	// компилирует ещё и стандартную библиотеку, что может занимать дольше
+	// lease-таймаута координатора.
+	cacheVolume    string
+	cacheMountPath string
+}
+
+var languageSpecs = map[string]languageSpec{
+	"python": {
+		image:      "python:3.12-slim",
+		sourceFile: "solution.py",
+		runCmd:     "python3 /tmp/solution.py",
+	},
+	"cpp": {
+		image:      "gcc:13",
+		sourceFile: "solution.cpp",
+		compileCmd: "g++ -O2 -o /tmp/solution /tmp/solution.cpp",
+		runCmd:     "/tmp/solution",
+	},
+	"go": {
+		image:          "golang:1.23",
+		sourceFile:     "solution.go",
+		compileCmd:     "go build -o /tmp/solution /tmp/solution.go",
+		runCmd:         "/tmp/solution",
+		cacheVolume:    "codetest-go-build-cache",
+		cacheMountPath: "/root/.cache/go-build",
+	},
+}
+
+// DockerJudge исполняет сабмишны в изолированных контейнерах через Docker
+// Engine API. Кеширования тест-кейсов тут нет и не должно быть — решение об
+// этом принимается координатором, воркер просто получает готовый
 // task.TestCases и гоняет его.
 type DockerJudge struct {
 	cli *client.Client
@@ -48,26 +91,41 @@ func NewDockerJudge() (*DockerJudge, error) {
 	return &DockerJudge{cli: cli}, nil
 }
 
-// EnsureImage подтягивает образ Python, если его ещё нет в демоне, к которому
-// подключён воркер (отдельный DinD-демон не шарит кэш образов с хостом).
+// EnsureImage подтягивает образы всех поддерживаемых языков, если их ещё нет
+// в демоне, к которому подключён воркер (отдельный DinD-демон не шарит кэш
+// образов с хостом).
 func (d *DockerJudge) EnsureImage(ctx context.Context) error {
-	rc, err := d.cli.ImagePull(ctx, pythonImage, image.PullOptions{})
-	if err != nil {
-		return fmt.Errorf("pull image %s: %w", pythonImage, err)
-	}
-	defer rc.Close()
+	pulled := make(map[string]bool, len(languageSpecs))
+	for _, spec := range languageSpecs {
+		if pulled[spec.image] {
+			continue
+		}
+		pulled[spec.image] = true
 
-	if _, err := io.Copy(io.Discard, rc); err != nil {
-		return fmt.Errorf("pull image %s: %w", pythonImage, err)
+		rc, err := d.cli.ImagePull(ctx, spec.image, image.PullOptions{})
+		if err != nil {
+			return fmt.Errorf("pull image %s: %w", spec.image, err)
+		}
+		_, copyErr := io.Copy(io.Discard, rc)
+		rc.Close()
+		if copyErr != nil {
+			return fmt.Errorf("pull image %s: %w", spec.image, copyErr)
+		}
 	}
 	return nil
 }
 
-// Judge поднимает один контейнер на весь сабмишн и прогоняет каждый тест
-// через отдельный exec внутри него. Останавливается на первом же непрошедшем
-// тесте (типичное поведение чекера) — остальные не запускаются.
+// Judge поднимает один контейнер на весь сабмишн, при необходимости собирает
+// решение и прогоняет каждый тест через отдельный exec внутри него.
+// Останавливается на первом же непрошедшем тесте (типичное поведение
+// чекера) — остальные не запускаются.
 func (d *DockerJudge) Judge(ctx context.Context, task *judgepb.Task) *judgepb.SubmitResultRequest {
-	containerID, err := d.createContainer(ctx)
+	spec, ok := languageSpecs[task.Language]
+	if !ok {
+		return errorResult(task.SubmissionId, fmt.Sprintf("неподдерживаемый язык: %q", task.Language))
+	}
+
+	containerID, err := d.createContainer(ctx, spec)
 	if err != nil {
 		return errorResult(task.SubmissionId, fmt.Sprintf("создание песочницы: %v", err))
 	}
@@ -81,12 +139,26 @@ func (d *DockerJudge) Judge(ctx context.Context, task *judgepb.Task) *judgepb.Su
 		return errorResult(task.SubmissionId, fmt.Sprintf("запуск песочницы: %v", err))
 	}
 
-	if err := d.copyCode(ctx, containerID, task.Code); err != nil {
+	if err := d.copyCode(ctx, containerID, spec.sourceFile, task.Code); err != nil {
 		return errorResult(task.SubmissionId, fmt.Sprintf("копирование решения: %v", err))
 	}
 
+	if spec.compileCmd != "" {
+		exitCode, _, stderr, err := d.exec(ctx, containerID, spec.compileCmd, "", compileTimeLimit)
+		if err != nil {
+			return errorResult(task.SubmissionId, fmt.Sprintf("компиляция: %v", err))
+		}
+		if exitCode != 0 {
+			return &judgepb.SubmitResultRequest{
+				SubmissionId: task.SubmissionId,
+				Status:       judgepb.Status_STATUS_CE,
+				Error:        stderr,
+			}
+		}
+	}
+
 	for _, tc := range task.TestCases {
-		status, output, stderr, err := d.runTest(ctx, containerID, tc)
+		status, output, stderr, err := d.runTest(ctx, containerID, spec.runCmd, tc)
 		if err != nil {
 			return errorResult(task.SubmissionId, fmt.Sprintf("тест %03d: %v", tc.Number, err))
 		}
@@ -106,17 +178,27 @@ func (d *DockerJudge) Judge(ctx context.Context, task *judgepb.Task) *judgepb.Su
 	}
 }
 
-func (d *DockerJudge) createContainer(ctx context.Context) (string, error) {
+func (d *DockerJudge) createContainer(ctx context.Context, spec languageSpec) (string, error) {
 	pidsLimit := int64(execPidsLimit)
 	memoryLimitBytes := int64(memoryLimitMiB) * 1024 * 1024
 
+	var mounts []mount.Mount
+	if spec.cacheVolume != "" {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: spec.cacheVolume,
+			Target: spec.cacheMountPath,
+		})
+	}
+
 	resp, err := d.cli.ContainerCreate(ctx,
 		&container.Config{
-			Image: pythonImage,
+			Image: spec.image,
 			Cmd:   []string{"sleep", "infinity"},
 		},
 		&container.HostConfig{
 			NetworkMode: "none",
+			Mounts:      mounts,
 			Resources: container.Resources{
 				Memory:     memoryLimitBytes,
 				MemorySwap: memoryLimitBytes, // без своп-надбавки, иначе лимит по факту в 2 раза больше
@@ -132,13 +214,13 @@ func (d *DockerJudge) createContainer(ctx context.Context) (string, error) {
 	return resp.ID, nil
 }
 
-func (d *DockerJudge) copyCode(ctx context.Context, containerID, code string) error {
+func (d *DockerJudge) copyCode(ctx context.Context, containerID, fileName, code string) error {
 	body := []byte(code)
 
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	if err := tw.WriteHeader(&tar.Header{
-		Name: "solution.py",
+		Name: fileName,
 		Mode: 0o644,
 		Size: int64(len(body)),
 	}); err != nil {
@@ -154,16 +236,46 @@ func (d *DockerJudge) copyCode(ctx context.Context, containerID, code string) er
 	return d.cli.CopyToContainer(ctx, containerID, "/tmp", &buf, container.CopyToContainerOptions{})
 }
 
-// runTest запускает решение в отдельном exec поверх уже поднятого контейнера.
-// Реальный лимит по времени навязывается изнутри контейнера через `timeout`
-// (код возврата 124), а не через context — это надёжнее, чем пытаться убить
-// конкретный exec-процесс снаружи через Docker API, для которого нет прямого
-// "kill exec" эндпоинта.
-func (d *DockerJudge) runTest(ctx context.Context, containerID string, tc *judgepb.TestCase) (judgepb.Status, string, string, error) {
-	execCtx, cancel := context.WithTimeout(ctx, testTimeLimit+dockerCallSlack)
+// runTest запускает уже собранное (для компилируемых языков) или интерпретируемое
+// решение в отдельном exec поверх уже поднятого контейнера и переводит код
+// возврата в вердикт. Реальный лимит по времени навязывается изнутри
+// контейнера через `timeout` (код возврата 124), а не через context — это
+// надёжнее, чем пытаться убить конкретный exec-процесс снаружи через Docker
+// API, для которого нет прямого "kill exec" эндпоинта.
+func (d *DockerJudge) runTest(ctx context.Context, containerID, runCmd string, tc *judgepb.TestCase) (judgepb.Status, string, string, error) {
+	cmd := fmt.Sprintf("timeout %gs %s", testTimeLimit.Seconds(), runCmd)
+	exitCode, stdout, stderr, err := d.exec(ctx, containerID, cmd, tc.Input, testTimeLimit+dockerCallSlack)
+	if err != nil {
+		return 0, "", "", err
+	}
+
+	switch exitCode {
+	case 0:
+		if normalizeOutput(stdout) == normalizeOutput(tc.ExpectedOutput) {
+			return judgepb.Status_STATUS_OK, "", "", nil
+		}
+		return judgepb.Status_STATUS_WA, stdout, "", nil
+	case 124:
+		// код возврата coreutils timeout при принудительном убийстве по таймауту
+		return judgepb.Status_STATUS_TL, "", "", nil
+	case 137:
+		// SIGKILL — в т.ч. OOM killer при превышении лимита памяти контейнера;
+		// это эвристика, точнее без чтения cgroup-событий не отличить от
+		// любого другого SIGKILL, но для MVP этого достаточно
+		return judgepb.Status_STATUS_ML, "", "", nil
+	default:
+		return judgepb.Status_STATUS_RE, stdout, stderr, nil
+	}
+}
+
+// exec запускает команду в уже поднятом контейнере, передаёт stdin (если
+// есть) и возвращает код возврата и вывод. Используется и для компиляции, и
+// для прогона тестов — единственная разница между ними в том, что подаётся
+// на stdin и как трактуется код возврата.
+func (d *DockerJudge) exec(ctx context.Context, containerID, cmd, stdin string, timeout time.Duration) (int, string, string, error) {
+	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := fmt.Sprintf("timeout %gs python3 %s", testTimeLimit.Seconds(), solutionPath)
 	execResp, err := d.cli.ContainerExecCreate(execCtx, containerID, container.ExecOptions{
 		Cmd:          []string{"sh", "-c", cmd},
 		AttachStdin:  true,
@@ -180,7 +292,7 @@ func (d *DockerJudge) runTest(ctx context.Context, containerID string, tc *judge
 	}
 	defer hijacked.Close()
 
-	if _, err := hijacked.Conn.Write([]byte(tc.Input)); err != nil {
+	if _, err := hijacked.Conn.Write([]byte(stdin)); err != nil {
 		return 0, "", "", fmt.Errorf("запись stdin: %w", err)
 	}
 
@@ -202,23 +314,7 @@ func (d *DockerJudge) runTest(ctx context.Context, containerID string, tc *judge
 		return 0, "", "", fmt.Errorf("exec inspect: %w", err)
 	}
 
-	switch inspect.ExitCode {
-	case 0:
-		if normalizeOutput(stdout.String()) == normalizeOutput(tc.ExpectedOutput) {
-			return judgepb.Status_STATUS_OK, "", "", nil
-		}
-		return judgepb.Status_STATUS_WA, stdout.String(), "", nil
-	case 124:
-		// код возврата coreutils timeout при принудительном убийстве по таймауту
-		return judgepb.Status_STATUS_TL, "", "", nil
-	case 137:
-		// SIGKILL — в т.ч. OOM killer при превышении лимита памяти контейнера;
-		// это эвристика, точнее без чтения cgroup-событий не отличить от
-		// любого другого SIGKILL, но для MVP этого достаточно
-		return judgepb.Status_STATUS_ML, "", "", nil
-	default:
-		return judgepb.Status_STATUS_RE, stdout.String(), stderr.String(), nil
-	}
+	return inspect.ExitCode, stdout.String(), stderr.String(), nil
 }
 
 // normalizeOutput приводит вывод к каноническому виду перед сравнением:

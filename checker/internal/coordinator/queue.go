@@ -10,7 +10,12 @@ import (
 )
 
 const (
-	leaseTimeout    = 30 * time.Second
+	// leaseTimeout взят с запасом на компиляцию (см. compileTimeLimit в
+	// checker/internal/worker/docker.go) и прогон всех тестов — иначе
+	// воркер, который всё ещё честно проверяет медленный сабмишн (например,
+	// холодную сборку Go), теряет lease и тот же сабмишн уходит другому
+	// воркеру параллельно.
+	leaseTimeout    = 90 * time.Second
 	cleanupInterval = 30 * time.Second
 )
 
