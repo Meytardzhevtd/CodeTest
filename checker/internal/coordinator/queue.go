@@ -15,6 +15,7 @@ const (
 )
 
 type entry struct {
+	taskID      string
 	task        *judgepb.Task
 	leasedUntil time.Time
 	done        bool
@@ -32,15 +33,19 @@ func NewQueue(ctx context.Context) *Queue {
 	return q
 }
 
-func (q *Queue) Enqueue(task *judgepb.Task) {
+func (q *Queue) Enqueue(taskID string, task *judgepb.Task) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.entries = append(q.entries, &entry{task: task})
+	q.entries = append(q.entries, &entry{taskID: taskID, task: task})
 	log.Printf("[queue] submission %s поставлена в очередь (language=%s)", task.SubmissionId, task.Language)
 }
 
-func (q *Queue) Lease() *judgepb.Task {
+// Lease возвращает следующую свободную задачу вместе с id задачи (task_id),
+// который нужен вызывающему коду только для того, чтобы подтянуть тест-кейсы
+// из хранилища — самому воркеру task_id не передаётся (в judgepb.Task такого
+// поля нет).
+func (q *Queue) Lease() (*judgepb.Task, string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -52,10 +57,10 @@ func (q *Queue) Lease() *judgepb.Task {
 
 		e.leasedUntil = now.Add(leaseTimeout)
 		log.Printf("[queue] submission %s выдана воркеру (lease до %s)", e.task.SubmissionId, e.leasedUntil.Format(time.RFC3339))
-		return e.task
+		return e.task, e.taskID
 	}
 
-	return nil
+	return nil, ""
 }
 
 func (q *Queue) Complete(submissionID string, result *judgepb.SubmitResultRequest) bool {

@@ -15,12 +15,19 @@ import (
 	grpccoordinator "github.com/meytardzhevtd/CodeTest/checker/internal/coordinator"
 	"github.com/meytardzhevtd/CodeTest/checker/internal/grpc/judgepb"
 	"github.com/meytardzhevtd/CodeTest/pkg/kafka"
+	"github.com/meytardzhevtd/CodeTest/pkg/storage"
 )
 
 type config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS" envSeparator:"," envDefault:"localhost:9092"`
 	GroupID      string   `env:"KAFKA_GROUP_ID" envDefault:"coordinator"`
 	GRPCAddr     string   `env:"GRPC_ADDR" envDefault:":50051"`
+
+	MinioEndpoint  string `env:"MINIO_ENDPOINT,required"`
+	MinioAccessKey string `env:"MINIO_ACCESS_KEY,required"`
+	MinioSecretKey string `env:"MINIO_SECRET_KEY,required"`
+	MinioBucket    string `env:"MINIO_BUCKET,required"`
+	MinioUseSSL    bool   `env:"MINIO_USE_SSL"`
 }
 
 func main() {
@@ -42,10 +49,21 @@ func main() {
 	consumer := kafka.NewConsumer(cfg.KafkaBrokers, kafka.TopicSubmissions, cfg.GroupID)
 	defer consumer.Close()
 
+	testStore, err := storage.NewClient(storage.Config{
+		Endpoint:  cfg.MinioEndpoint,
+		AccessKey: cfg.MinioAccessKey,
+		SecretKey: cfg.MinioSecretKey,
+		Bucket:    cfg.MinioBucket,
+		UseSSL:    cfg.MinioUseSSL,
+	})
+	if err != nil {
+		log.Fatalf("create minio client: %v", err)
+	}
+
 	queue := grpccoordinator.NewQueue(ctx)
 
 	grpcServer := grpc.NewServer()
-	judgepb.RegisterCoordinatorServer(grpcServer, grpccoordinator.NewServer(queue, producer))
+	judgepb.RegisterCoordinatorServer(grpcServer, grpccoordinator.NewServer(queue, producer, testStore))
 
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
@@ -88,7 +106,7 @@ func handleSubmission(queue *grpccoordinator.Queue) func(ctx context.Context, da
 		log.Printf("[coordinator] submission %s: получена из kafka (task=%s, language=%s, code=%d bytes)",
 			msg.SubmissionID, msg.TaskID, msg.Language, len(msg.Code))
 
-		queue.Enqueue(&judgepb.Task{
+		queue.Enqueue(msg.TaskID, &judgepb.Task{
 			SubmissionId: msg.SubmissionID,
 			Language:     msg.Language,
 			Code:         msg.Code,
