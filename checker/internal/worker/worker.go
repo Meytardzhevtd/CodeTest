@@ -10,16 +10,16 @@ import (
 
 const (
 	pollInterval = 50 * time.Millisecond
-	judgeDelay   = 2 * time.Second
 )
 
 type Worker struct {
 	id     string
 	client judgepb.CoordinatorClient
+	runner *DockerJudge
 }
 
-func New(id string, client judgepb.CoordinatorClient) *Worker {
-	return &Worker{id: id, client: client}
+func New(id string, client judgepb.CoordinatorClient, runner *DockerJudge) *Worker {
+	return &Worker{id: id, client: client, runner: runner}
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -46,7 +46,7 @@ func (w *Worker) Run(ctx context.Context) {
 
 		log.Printf("[worker %s] submission %s: получена (language=%s)", w.id, resp.Task.SubmissionId, resp.Task.Language)
 
-		result := w.judge(resp.Task)
+		result := w.judge(ctx, resp.Task)
 
 		submitResp, err := w.client.SubmitResult(ctx, result)
 		if err != nil {
@@ -62,14 +62,7 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-func (w *Worker) judge(task *judgepb.Task) *judgepb.SubmitResultRequest {
-	// TODO: реальное выполнение — поднять контейнер по task.Language через
-	// Docker SDK, прогнать все task.TestCases и вернуть настоящий вердикт.
-	log.Printf("[worker %s] submission %s: выполняю (имитация, %s)", w.id, task.SubmissionId, judgeDelay)
-	time.Sleep(judgeDelay)
-
-	return &judgepb.SubmitResultRequest{
-		SubmissionId: task.SubmissionId,
-		Status:       judgepb.Status_STATUS_OK,
-	}
+func (w *Worker) judge(ctx context.Context, task *judgepb.Task) *judgepb.SubmitResultRequest {
+	log.Printf("[worker %s] submission %s: выполняю (language=%s, тестов=%d)", w.id, task.SubmissionId, task.Language, len(task.TestCases))
+	return w.runner.Judge(ctx, task)
 }

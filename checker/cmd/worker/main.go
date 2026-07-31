@@ -35,8 +35,16 @@ func main() {
 	}
 	defer conn.Close()
 
+	judge, err := worker.NewDockerJudge()
+	if err != nil {
+		log.Fatalf("create docker judge: %v", err)
+	}
+	if err := judge.EnsureImage(ctx); err != nil {
+		log.Fatalf("pull python image: %v", err)
+	}
+
 	id := uuid.NewString()[:8]
-	w := worker.New(id, judgepb.NewCoordinatorClient(conn))
+	w := worker.New(id, judgepb.NewCoordinatorClient(conn), judge)
 
 	log.Printf("[worker %s] подключён к координатору %s", id, cfg.CoordinatorAddr)
 	w.Run(ctx)

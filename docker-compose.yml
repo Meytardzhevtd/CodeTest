@@ -95,9 +95,32 @@ services:
     environment:
       KAFKA_BROKERS: kafka:29092
       GRPC_ADDR: :50051
+      MINIO_ENDPOINT: minio:9000
     depends_on:
       kafka:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # Отдельный изолированный Docker-демон для воркеров: они запускают в нём
+  # контейнеры с кодом пользователя (Docker SDK for Go, DOCKER_HOST ниже),
+  # без доступа к демону хоста.
+  dind:
+    image: docker:28-dind
+    container_name: codetest-dind
+    privileged: true
+    command:
+      - --host=unix:///var/run/docker.sock
+      - --host=tcp://0.0.0.0:2375
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - dind-data:/var/lib/docker
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   worker:
     build:
@@ -107,8 +130,12 @@ services:
       - .env
     environment:
       COORDINATOR_ADDR: coordinator:50051
+      DOCKER_HOST: tcp://dind:2375
     depends_on:
-      - coordinator
+      coordinator:
+        condition: service_started
+      dind:
+        condition: service_healthy
     deploy:
       replicas: 3
 
@@ -116,3 +143,4 @@ volumes:
   postgres-data:
   minio-data:
   kafka-data:
+  dind-data:
