@@ -15,7 +15,6 @@ const LANGUAGES = [
   { value: 'python', label: 'Python' },
   { value: 'go', label: 'Go' },
   { value: 'cpp', label: 'C++' },
-  { value: 'javascript', label: 'JavaScript' },
 ]
 
 const POLL_INTERVAL_MS = 1000

@@ -3,7 +3,6 @@ import CodeMirror from '@uiw/react-codemirror'
 import type { Extension } from '@codemirror/state'
 import { python } from '@codemirror/lang-python'
 import { cpp } from '@codemirror/lang-cpp'
-import { javascript } from '@codemirror/lang-javascript'
 import { StreamLanguage } from '@codemirror/language'
 import { go } from '@codemirror/legacy-modes/mode/go'
 import { githubLight, githubDark } from '@uiw/codemirror-theme-github'
@@ -12,7 +11,6 @@ const LANGUAGE_EXTENSIONS: Record<string, Extension> = {
   python: python(),
   go: StreamLanguage.define(go),
   cpp: cpp(),
-  javascript: javascript(),
 }
 
 function usePrefersDark(): boolean {
