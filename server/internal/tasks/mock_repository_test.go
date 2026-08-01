@@ -145,6 +145,21 @@ func (mr *MockRepositoryInterfaceMockRecorder) SetExamples(ctx, taskID, examples
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetExamples", reflect.TypeOf((*MockRepositoryInterface)(nil).SetExamples), ctx, taskID, examples)
 }
 
+// SetTags mocks base method.
+func (m *MockRepositoryInterface) SetTags(ctx context.Context, taskID string, tagNames []string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetTags", ctx, taskID, tagNames)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetTags indicates an expected call of SetTags.
+func (mr *MockRepositoryInterfaceMockRecorder) SetTags(ctx, taskID, tagNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTags", reflect.TypeOf((*MockRepositoryInterface)(nil).SetTags), ctx, taskID, tagNames)
+}
+
 // UpdateTask mocks base method.
 func (m *MockRepositoryInterface) UpdateTask(ctx context.Context, id string, updates Task) (Task, error) {
 	m.ctrl.T.Helper()

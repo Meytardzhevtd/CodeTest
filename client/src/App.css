@@ -653,6 +653,10 @@
   margin-bottom: 10px;
 }
 
+.task-edit-link {
+  margin-left: auto;
+}
+
 .task-statement h1 {
   margin-bottom: 16px;
 }

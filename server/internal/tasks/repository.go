@@ -17,6 +17,7 @@ type RepositoryInterface interface {
 	UpdateTask(ctx context.Context, id string, updates Task) (Task, error)
 	DeleteTask(ctx context.Context, id string) error
 	AddTagsToTask(ctx context.Context, taskID string, tagNames []string) ([]string, error)
+	SetTags(ctx context.Context, taskID string, tagNames []string) ([]string, error)
 	SetExamples(ctx context.Context, taskID string, examples []ExampleInput) ([]Example, error)
 }
 
@@ -215,6 +216,12 @@ func (r *Repository) UpdateTask(ctx context.Context, id string, updates Task) (T
 		}
 		return Task{}, fmt.Errorf("update task: %w", err)
 	}
+	if err := r.attachTags(ctx, []*Task{&task}); err != nil {
+		return Task{}, err
+	}
+	if err := r.attachExamples(ctx, []*Task{&task}); err != nil {
+		return Task{}, err
+	}
 	return task, nil
 }
 
@@ -281,6 +288,49 @@ func (r *Repository) AddTagsToTask(ctx context.Context, taskID string, tagNames 
 		var tagID string
 		// ON CONFLICT DO UPDATE (a no-op change) so RETURNING still yields the
 		// existing row's id when the tag already exists.
+		err := tx.QueryRow(ctx, `
+			INSERT INTO tags (name) VALUES ($1)
+			ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+			RETURNING id
+		`, name).Scan(&tagID)
+		if err != nil {
+			return nil, fmt.Errorf("get or create tag %q: %w", name, err)
+		}
+
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2)
+			ON CONFLICT DO NOTHING
+		`, taskID, tagID); err != nil {
+			return nil, fmt.Errorf("attach tag %q to task: %w", name, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	task := &Task{ID: taskID}
+	if err := r.attachTags(ctx, []*Task{task}); err != nil {
+		return nil, err
+	}
+	return task.Tags, nil
+}
+
+// SetTags replaces a task's whole set of tags with the given ones, creating
+// any tags that don't already exist (by name). An empty list clears all tags.
+func (r *Repository) SetTags(ctx context.Context, taskID string, tagNames []string) ([]string, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM task_tags WHERE task_id = $1`, taskID); err != nil {
+		return nil, fmt.Errorf("clear tags: %w", err)
+	}
+
+	for _, name := range tagNames {
+		var tagID string
 		err := tx.QueryRow(ctx, `
 			INSERT INTO tags (name) VALUES ($1)
 			ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name

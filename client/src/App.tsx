@@ -6,6 +6,7 @@ import { AuthPage } from './pages/AuthPage'
 import { TasksListPage } from './pages/TasksListPage'
 import { TaskCreatePage } from './pages/TaskCreatePage'
 import { TaskDetailPage } from './pages/TaskDetailPage'
+import { TaskEditPage } from './pages/TaskEditPage'
 import { ProfilePage } from './pages/ProfilePage'
 
 function FullscreenLoader() {
@@ -42,6 +43,15 @@ function AppRoutes() {
           <ProfilePage />
         </Layout>
       )
+  }
+
+  const taskEditParams = matchPath('/tasks/:slug/edit', path)
+  if (taskEditParams) {
+    return (
+      <Layout>
+        <TaskEditPage key={taskEditParams.slug} slug={taskEditParams.slug} />
+      </Layout>
+    )
   }
 
   const taskDetailParams = matchPath('/tasks/:slug', path)

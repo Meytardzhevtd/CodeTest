@@ -98,6 +98,53 @@ func (s *Service) ListTasks(ctx context.Context, limit, offset int) ([]Task, int
 	return tasks, total, nil
 }
 
+// UpdateTask changes a task's content fields (title, statement, difficulty,
+// limits). Unset fields in req keep their current value. Slug is immutable.
+// Only the task's creator may do this.
+func (s *Service) UpdateTask(ctx context.Context, userID, taskID string, req UpdateTaskRequest) (Task, error) {
+	if taskID == "" {
+		return Task{}, errors.New("task id cannot be empty")
+	}
+
+	task, err := s.repo.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, ErrTaskNotFound) {
+			return Task{}, ErrTaskNotFound
+		}
+		return Task{}, fmt.Errorf("get task by id: %w", err)
+	}
+	if task.CreatedBy != userID {
+		return Task{}, ErrForbidden
+	}
+
+	if req.Title != nil {
+		task.Title = strings.TrimSpace(*req.Title)
+	}
+	if req.Statement != nil {
+		task.Statement = strings.TrimSpace(*req.Statement)
+	}
+	if req.Difficulty != nil {
+		task.Difficulty = Difficulty(*req.Difficulty)
+	}
+	if req.TimeLimitMs != nil {
+		task.TimeLimitMs = *req.TimeLimitMs
+	}
+	if req.MemoryLimitMb != nil {
+		task.MemoryLimitMb = *req.MemoryLimitMb
+	}
+
+	if err := validateTask(task); err != nil {
+		return Task{}, err
+	}
+
+	updated, err := s.repo.UpdateTask(ctx, taskID, task)
+	if err != nil {
+		return Task{}, fmt.Errorf("update task: %w", err)
+	}
+
+	return updated, nil
+}
+
 func (s *Service) DeleteTask(ctx context.Context, id string) error {
 	if id == "" {
 		return errors.New("task id cannot be empty")
@@ -142,6 +189,38 @@ func (s *Service) AddTagsToTask(ctx context.Context, userID, taskID string, tagN
 	tags, err := s.repo.AddTagsToTask(ctx, taskID, names)
 	if err != nil {
 		return nil, fmt.Errorf("add tags to task: %w", err)
+	}
+
+	return tags, nil
+}
+
+// SetTags replaces a task's whole set of tags with the given ones, creating
+// any that don't already exist. An empty list clears all tags. Only the
+// task's creator may do this.
+func (s *Service) SetTags(ctx context.Context, userID, taskID string, tagNames []string) ([]string, error) {
+	if taskID == "" {
+		return nil, errors.New("task id cannot be empty")
+	}
+
+	names, err := normalizeTagNames(tagNames)
+	if err != nil {
+		return nil, err
+	}
+
+	task, err := s.repo.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, fmt.Errorf("get task by id: %w", err)
+	}
+	if task.CreatedBy != userID {
+		return nil, ErrForbidden
+	}
+
+	tags, err := s.repo.SetTags(ctx, taskID, names)
+	if err != nil {
+		return nil, fmt.Errorf("set tags: %w", err)
 	}
 
 	return tags, nil

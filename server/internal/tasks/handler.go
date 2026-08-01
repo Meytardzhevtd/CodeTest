@@ -25,9 +25,11 @@ func (h *Handler) Routes() http.Handler {
 	r.Get("/", h.ListTasks)
 	r.Get("/slug/{slug}", h.GetTaskBySlug)
 	r.Get("/{id}", h.GetTaskByID)
+	r.Put("/{id}", h.UpdateTask)
 	r.Delete("/{id}", h.DeleteTask)
 	r.Post("/{id}/tests", h.UploadTests)
 	r.Post("/{id}/tags", h.AddTags)
+	r.Put("/{id}/tags", h.SetTags)
 	r.Post("/{id}/examples", h.SetExamples)
 
 	return r
@@ -123,6 +125,41 @@ func (h *Handler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) UpdateTask(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	taskID := chi.URLParam(r, "id")
+	if taskID == "" {
+		writeError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+
+	var req UpdateTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	task, err := h.service.UpdateTask(r.Context(), userId, taskID, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTaskNotFound):
+			writeError(w, http.StatusNotFound, "task not found")
+		case errors.Is(err, ErrForbidden):
+			writeError(w, http.StatusForbidden, "only the task creator can edit the task")
+		default:
+			writeError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, task)
+}
+
 func (h *Handler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -215,6 +252,43 @@ func (h *Handler) AddTags(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrForbidden):
 			writeError(w, http.StatusForbidden, "only the task creator can add tags")
 		case errors.Is(err, ErrNoTagsProvided), errors.Is(err, ErrInvalidTagName):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "something went wrong")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, AddTagsResponse{Tags: tags})
+}
+
+func (h *Handler) SetTags(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	taskID := chi.URLParam(r, "id")
+	if taskID == "" {
+		writeError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+
+	var req AddTagsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	tags, err := h.service.SetTags(r.Context(), userId, taskID, req.Tags)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTaskNotFound):
+			writeError(w, http.StatusNotFound, "task not found")
+		case errors.Is(err, ErrForbidden):
+			writeError(w, http.StatusForbidden, "only the task creator can edit tags")
+		case errors.Is(err, ErrInvalidTagName):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
 			writeError(w, http.StatusInternalServerError, "something went wrong")

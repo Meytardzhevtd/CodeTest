@@ -159,6 +159,15 @@ export function TaskDetailPage({ slug }: { slug: string }) {
           <div className="task-detail-header">
             <DifficultyBadge difficulty={task.difficulty} />
             <span className="task-slug">{task.slug}</span>
+            {user?.id === task.created_by ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm task-edit-link"
+                onClick={() => navigate(`/tasks/${task.slug}/edit`)}
+              >
+                Редактировать
+              </button>
+            ) : null}
           </div>
           <h1>{task.title}</h1>
           {task.tags.length > 0 ? (

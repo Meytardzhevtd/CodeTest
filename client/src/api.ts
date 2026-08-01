@@ -10,6 +10,7 @@ import type {
   SubmissionHistoryResponse,
   Task,
   TaskListResponse,
+  UpdateTaskRequest,
   UploadTestsResponse,
 } from './types'
 
@@ -109,6 +110,12 @@ export const tasksApi = {
       body: JSON.stringify(body),
     }),
 
+  update: (taskId: string, body: UpdateTaskRequest) =>
+    request<Task>(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
   uploadTests: (taskId: string, archive: File) => {
     const formData = new FormData()
     formData.append('archive', archive)
@@ -121,6 +128,12 @@ export const tasksApi = {
   addTags: (taskId: string, tags: string[]) =>
     request<AddTagsResponse>(`/api/tasks/${encodeURIComponent(taskId)}/tags`, {
       method: 'POST',
+      body: JSON.stringify({ tags }),
+    }),
+
+  setTags: (taskId: string, tags: string[]) =>
+    request<AddTagsResponse>(`/api/tasks/${encodeURIComponent(taskId)}/tags`, {
+      method: 'PUT',
       body: JSON.stringify({ tags }),
     }),
 
