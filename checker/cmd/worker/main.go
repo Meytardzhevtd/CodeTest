@@ -39,9 +39,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("create docker judge: %v", err)
 	}
-	if err := judge.EnsureImage(ctx); err != nil {
-		log.Fatalf("pull python image: %v", err)
-	}
+	// Образы языков подгружаются в фоне: воркер должен встать в опрос
+	// координатора сразу, а не после пары гигабайт gcc/golang.
+	judge.WarmImages(ctx)
 
 	id := uuid.NewString()[:8]
 	w := worker.New(id, judgepb.NewCoordinatorClient(conn), judge)

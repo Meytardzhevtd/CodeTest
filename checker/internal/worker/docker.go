@@ -6,9 +6,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
+	"sync"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
@@ -31,8 +34,11 @@ const (
 	compileTimeLimit = 40 * time.Second
 	memoryLimitMiB   = 256
 	execPidsLimit    = 64
-	execCPULimit     = 1_000_000_000  // 1 vCPU, в единицах NanoCPUs
+	execCPULimit     = 1_000_000_000   // 1 vCPU, в единицах NanoCPUs
 	dockerCallSlack  = 2 * time.Second // запас поверх лимита на накладные расходы Docker API
+	// gcc:13 и golang:1.23 весят вместе больше двух гигабайт, и на холодном
+	// DinD-демоне они тянутся с нуля — таймаут рассчитан на медленный канал.
+	imagePullTimeout = 30 * time.Minute
 )
 
 // languageSpec описывает всё, что нужно воркеру, чтобы собрать (если нужно)
@@ -81,6 +87,15 @@ var languageSpecs = map[string]languageSpec{
 // task.TestCases и гоняет его.
 type DockerJudge struct {
 	cli *client.Client
+
+	mu    sync.Mutex
+	pulls map[string]*imagePull // образ -> идущая или уже успешная загрузка
+}
+
+// imagePull — одна загрузка образа, которую ждут все, кому этот образ нужен.
+type imagePull struct {
+	done chan struct{}
+	err  error
 }
 
 func NewDockerJudge() (*DockerJudge, error) {
@@ -88,29 +103,104 @@ func NewDockerJudge() (*DockerJudge, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create docker client: %w", err)
 	}
-	return &DockerJudge{cli: cli}, nil
+	return &DockerJudge{cli: cli, pulls: make(map[string]*imagePull)}, nil
 }
 
-// EnsureImage подтягивает образы всех поддерживаемых языков, если их ещё нет
-// в демоне, к которому подключён воркер (отдельный DinD-демон не шарит кэш
-// образов с хостом).
-func (d *DockerJudge) EnsureImage(ctx context.Context) error {
-	pulled := make(map[string]bool, len(languageSpecs))
+// WarmImages запускает подгрузку образов всех поддерживаемых языков и сразу
+// возвращает управление. Блокировать на этом старт воркера нельзя: отдельный
+// DinD-демон не шарит кэш образов с хостом, так что на первом запуске он тянет
+// с нуля больше двух гигабайт (gcc:13 + golang:1.23), и всё это время воркер
+// не опрашивал бы координатора. Со стороны это выглядит как полностью мёртвая
+// проверка: сабмишн уходит в Kafka, ложится в очередь координатора, а клиент
+// бесконечно опрашивает статус — причём не только для C++ и Go, но и для
+// Python, образ которого давно скачался.
+func (d *DockerJudge) WarmImages(ctx context.Context) {
+	seen := make(map[string]bool, len(languageSpecs))
 	for _, spec := range languageSpecs {
-		if pulled[spec.image] {
+		if seen[spec.image] {
 			continue
 		}
-		pulled[spec.image] = true
+		seen[spec.image] = true
 
-		rc, err := d.cli.ImagePull(ctx, spec.image, image.PullOptions{})
-		if err != nil {
-			return fmt.Errorf("pull image %s: %w", spec.image, err)
+		go func(img string) {
+			start := time.Now()
+			log.Printf("[judge] подгружаю образ %s в фоне", img)
+			if err := d.ensureImage(ctx, img); err != nil {
+				log.Printf("[judge] образ %s не готов (%v), повторю при первом сабмишне на этом языке", img, err)
+				return
+			}
+			log.Printf("[judge] образ %s готов (%s)", img, time.Since(start).Round(time.Second))
+		}(spec.image)
+	}
+}
+
+// ensureImage гарантирует, что образ есть на демоне. Один образ тянется не
+// более одного раза за раз: параллельные вызовы ждут ту же загрузку, а не
+// запускают свою.
+func (d *DockerJudge) ensureImage(ctx context.Context, img string) error {
+	d.mu.Lock()
+	p, inFlight := d.pulls[img]
+	if !inFlight {
+		p = &imagePull{done: make(chan struct{})}
+		d.pulls[img] = p
+		go d.pull(img, p)
+	}
+	d.mu.Unlock()
+
+	if inFlight {
+		select {
+		case <-p.done:
+			return p.err
+		default:
+			log.Printf("[judge] образ %s ещё подгружается, жду", img)
 		}
-		_, copyErr := io.Copy(io.Discard, rc)
-		rc.Close()
-		if copyErr != nil {
-			return fmt.Errorf("pull image %s: %w", spec.image, copyErr)
-		}
+	}
+
+	select {
+	case <-p.done:
+		return p.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (d *DockerJudge) pull(img string, p *imagePull) {
+	// Свой контекст, не контекст того, кто первым попросил образ: загрузку
+	// начинает кто-то один, а ждут её все, и отмена ожидания одним не должна
+	// ронять её для остальных.
+	ctx, cancel := context.WithTimeout(context.Background(), imagePullTimeout)
+	defer cancel()
+
+	p.err = d.pullImage(ctx, img)
+	close(p.done)
+
+	if p.err != nil {
+		// неудачную попытку не запоминаем — следующий сабмишн попробует снова
+		d.mu.Lock()
+		delete(d.pulls, img)
+		d.mu.Unlock()
+	}
+}
+
+func (d *DockerJudge) pullImage(ctx context.Context, img string) error {
+	// Если образ уже на демоне, в сеть не ходим вовсе: ImagePull всё равно
+	// сходил бы в реестр за манифестом и упал бы при недоступном интернете,
+	// хотя судить в этот момент уже есть чем.
+	if _, err := d.cli.ImageInspect(ctx, img); err == nil {
+		return nil
+	} else if !cerrdefs.IsNotFound(err) {
+		return fmt.Errorf("inspect image %s: %w", img, err)
+	}
+
+	rc, err := d.cli.ImagePull(ctx, img, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("pull image %s: %w", img, err)
+	}
+	defer rc.Close()
+
+	// ImagePull возвращает управление сразу, а качает, пока читают тело ответа
+	if _, err := io.Copy(io.Discard, rc); err != nil {
+		return fmt.Errorf("pull image %s: %w", img, err)
 	}
 	return nil
 }
@@ -123,6 +213,10 @@ func (d *DockerJudge) Judge(ctx context.Context, task *judgepb.Task) *judgepb.Su
 	spec, ok := languageSpecs[task.Language]
 	if !ok {
 		return errorResult(task.SubmissionId, fmt.Sprintf("неподдерживаемый язык: %q", task.Language))
+	}
+
+	if err := d.ensureImage(ctx, spec.image); err != nil {
+		return errorResult(task.SubmissionId, fmt.Sprintf("образ %s недоступен: %v", spec.image, err))
 	}
 
 	containerID, err := d.createContainer(ctx, spec)
