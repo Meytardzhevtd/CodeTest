@@ -460,6 +460,94 @@
   border: 1px solid var(--accent-border);
 }
 
+/* Task examples (create form) */
+
+.example-hint {
+  margin-top: 4px;
+  font-size: 0.8rem;
+}
+
+.example-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.example-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.example-pair-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.example-pair textarea {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+/* Task examples (task detail page) */
+
+.task-examples {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.task-examples h3 {
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+}
+
+.task-example {
+  margin-bottom: 14px;
+}
+
+.task-example:last-child {
+  margin-bottom: 0;
+}
+
+.task-example-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.task-example-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.task-example-block span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  color: var(--text);
+}
+
+.task-example-block pre {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Task list */
 
 .task-grid {
@@ -1009,7 +1097,8 @@
   .task-detail-grid,
   .profile-grid,
   .form-row-three,
-  .form-row {
+  .form-row,
+  .task-example-pair {
     grid-template-columns: 1fr;
   }
 

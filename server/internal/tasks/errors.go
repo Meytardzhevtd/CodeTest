@@ -12,4 +12,5 @@ var (
 	ErrInvalidArchive    = errors.New("invalid tests archive")
 	ErrNoTagsProvided    = errors.New("at least one tag must be provided")
 	ErrInvalidTagName    = errors.New("invalid tag name: must be 1-50 characters")
+	ErrTooManyExamples   = errors.New("at most 3 examples are allowed per task")
 )

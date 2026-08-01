@@ -130,6 +130,21 @@ func (mr *MockRepositoryInterfaceMockRecorder) ListTasks(ctx, limit, offset any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTasks", reflect.TypeOf((*MockRepositoryInterface)(nil).ListTasks), ctx, limit, offset)
 }
 
+// SetExamples mocks base method.
+func (m *MockRepositoryInterface) SetExamples(ctx context.Context, taskID string, examples []ExampleInput) ([]Example, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetExamples", ctx, taskID, examples)
+	ret0, _ := ret[0].([]Example)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetExamples indicates an expected call of SetExamples.
+func (mr *MockRepositoryInterfaceMockRecorder) SetExamples(ctx, taskID, examples any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetExamples", reflect.TypeOf((*MockRepositoryInterface)(nil).SetExamples), ctx, taskID, examples)
+}
+
 // UpdateTask mocks base method.
 func (m *MockRepositoryInterface) UpdateTask(ctx context.Context, id string, updates Task) (Task, error) {
 	m.ctrl.T.Helper()

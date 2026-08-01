@@ -19,6 +19,12 @@ export interface ProfileResponse {
 
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
+export interface Example {
+  id: string
+  input: string
+  output: string
+}
+
 export interface Task {
   id: string
   slug: string
@@ -28,6 +34,7 @@ export interface Task {
   time_limit_ms: number
   memory_limit_mb: number
   tags: string[]
+  examples: Example[]
   created_by: string
   created_by_username: string
   created_at: string
@@ -56,6 +63,10 @@ export interface UploadTestsResponse {
 
 export interface AddTagsResponse {
   tags: string[]
+}
+
+export interface SetExamplesResponse {
+  examples: Example[]
 }
 
 export type SubmissionStatus = 'pending' | 'running' | 'OK' | 'WA' | 'RE' | 'CE' | 'TL' | 'ML' | 'ERROR'

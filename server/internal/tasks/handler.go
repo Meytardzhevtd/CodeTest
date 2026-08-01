@@ -28,6 +28,7 @@ func (h *Handler) Routes() http.Handler {
 	r.Delete("/{id}", h.DeleteTask)
 	r.Post("/{id}/tests", h.UploadTests)
 	r.Post("/{id}/tags", h.AddTags)
+	r.Post("/{id}/examples", h.SetExamples)
 
 	return r
 }
@@ -222,6 +223,43 @@ func (h *Handler) AddTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, AddTagsResponse{Tags: tags})
+}
+
+func (h *Handler) SetExamples(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	taskID := chi.URLParam(r, "id")
+	if taskID == "" {
+		writeError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+
+	var req SetExamplesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	examples, err := h.service.SetExamples(r.Context(), userId, taskID, req.Examples)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrTaskNotFound):
+			writeError(w, http.StatusNotFound, "task not found")
+		case errors.Is(err, ErrForbidden):
+			writeError(w, http.StatusForbidden, "only the task creator can set examples")
+		case errors.Is(err, ErrTooManyExamples):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "something went wrong")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, SetExamplesResponse{Examples: examples})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {

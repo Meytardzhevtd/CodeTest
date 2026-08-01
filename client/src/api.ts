@@ -6,6 +6,7 @@ import type {
   CreateTaskRequest,
   GetSubmissionResponse,
   ProfileResponse,
+  SetExamplesResponse,
   SubmissionHistoryResponse,
   Task,
   TaskListResponse,
@@ -121,6 +122,12 @@ export const tasksApi = {
     request<AddTagsResponse>(`/api/tasks/${encodeURIComponent(taskId)}/tags`, {
       method: 'POST',
       body: JSON.stringify({ tags }),
+    }),
+
+  setExamples: (taskId: string, examples: { input: string; output: string }[]) =>
+    request<SetExamplesResponse>(`/api/tasks/${encodeURIComponent(taskId)}/examples`, {
+      method: 'POST',
+      body: JSON.stringify({ examples }),
     }),
 }
 

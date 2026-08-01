@@ -147,6 +147,54 @@ func (s *Service) AddTagsToTask(ctx context.Context, userID, taskID string, tagN
 	return tags, nil
 }
 
+// MaxExamplesPerTask caps how many sample input/output pairs a task can show.
+const MaxExamplesPerTask = 3
+
+// SetExamples replaces a task's sample input/output pairs. Rows where both
+// sides are blank are dropped silently; a row with only one side filled in
+// is kept as-is. Only the task's creator may do this.
+func (s *Service) SetExamples(ctx context.Context, userID, taskID string, inputs []ExampleInput) ([]Example, error) {
+	if taskID == "" {
+		return nil, errors.New("task id cannot be empty")
+	}
+
+	task, err := s.repo.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, ErrTaskNotFound) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, fmt.Errorf("get task by id: %w", err)
+	}
+	if task.CreatedBy != userID {
+		return nil, ErrForbidden
+	}
+
+	normalized := normalizeExamples(inputs)
+	if len(normalized) > MaxExamplesPerTask {
+		return nil, ErrTooManyExamples
+	}
+
+	examples, err := s.repo.SetExamples(ctx, taskID, normalized)
+	if err != nil {
+		return nil, fmt.Errorf("set examples: %w", err)
+	}
+
+	return examples, nil
+}
+
+// normalizeExamples drops rows where both input and output are blank -
+// those represent an example slot the task creator left untouched.
+func normalizeExamples(inputs []ExampleInput) []ExampleInput {
+	normalized := make([]ExampleInput, 0, len(inputs))
+	for _, ex := range inputs {
+		if strings.TrimSpace(ex.Input) == "" && strings.TrimSpace(ex.Output) == "" {
+			continue
+		}
+		normalized = append(normalized, ex)
+	}
+	return normalized
+}
+
 func normalizeTagNames(names []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(names))
 	normalized := make([]string, 0, len(names))

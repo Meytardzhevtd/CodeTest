@@ -17,6 +17,7 @@ type RepositoryInterface interface {
 	UpdateTask(ctx context.Context, id string, updates Task) (Task, error)
 	DeleteTask(ctx context.Context, id string) error
 	AddTagsToTask(ctx context.Context, taskID string, tagNames []string) ([]string, error)
+	SetExamples(ctx context.Context, taskID string, examples []ExampleInput) ([]Example, error)
 }
 
 type Repository struct {
@@ -81,6 +82,9 @@ func (r *Repository) GetTaskByID(ctx context.Context, id string) (Task, error) {
 	if err := r.attachTags(ctx, []*Task{&task}); err != nil {
 		return Task{}, err
 	}
+	if err := r.attachExamples(ctx, []*Task{&task}); err != nil {
+		return Task{}, err
+	}
 	return task, nil
 }
 
@@ -109,6 +113,9 @@ func (r *Repository) GetTaskBySlug(ctx context.Context, slug string) (Task, erro
 		return Task{}, fmt.Errorf("get task by slug: %w", err)
 	}
 	if err := r.attachTags(ctx, []*Task{&task}); err != nil {
+		return Task{}, err
+	}
+	if err := r.attachExamples(ctx, []*Task{&task}); err != nil {
 		return Task{}, err
 	}
 	return task, nil
@@ -158,6 +165,9 @@ func (r *Repository) ListTasks(ctx context.Context, limit, offset int) ([]Task, 
 		ptrs[i] = &tasks[i]
 	}
 	if err := r.attachTags(ctx, ptrs); err != nil {
+		return nil, 0, err
+	}
+	if err := r.attachExamples(ctx, ptrs); err != nil {
 		return nil, 0, err
 	}
 
@@ -297,6 +307,77 @@ func (r *Repository) AddTagsToTask(ctx context.Context, taskID string, tagNames 
 		return nil, err
 	}
 	return task.Tags, nil
+}
+
+// attachExamples fetches examples for the given tasks in a single query and
+// fills in each task's Examples field (in place, hence the pointers).
+func (r *Repository) attachExamples(ctx context.Context, tasks []*Task) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	ids := make([]string, len(tasks))
+	byID := make(map[string]*Task, len(tasks))
+	for i, t := range tasks {
+		ids[i] = t.ID
+		byID[t.ID] = t
+		t.Examples = []Example{}
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, task_id, example_input, example_output
+		FROM task_examples
+		WHERE task_id = ANY($1)
+		ORDER BY created_at
+	`, ids)
+	if err != nil {
+		return fmt.Errorf("attach examples: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var taskID string
+		var example Example
+		if err := rows.Scan(&example.ID, &taskID, &example.Input, &example.Output); err != nil {
+			return fmt.Errorf("scan task example: %w", err)
+		}
+		if t, ok := byID[taskID]; ok {
+			t.Examples = append(t.Examples, example)
+		}
+	}
+	return rows.Err()
+}
+
+// SetExamples replaces a task's whole set of examples with the given ones.
+func (r *Repository) SetExamples(ctx context.Context, taskID string, examples []ExampleInput) ([]Example, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM task_examples WHERE task_id = $1`, taskID); err != nil {
+		return nil, fmt.Errorf("clear examples: %w", err)
+	}
+
+	result := make([]Example, 0, len(examples))
+	for _, ex := range examples {
+		var created Example
+		err := tx.QueryRow(ctx, `
+			INSERT INTO task_examples (task_id, example_input, example_output)
+			VALUES ($1, $2, $3)
+			RETURNING id, example_input, example_output
+		`, taskID, ex.Input, ex.Output).Scan(&created.ID, &created.Input, &created.Output)
+		if err != nil {
+			return nil, fmt.Errorf("insert example: %w", err)
+		}
+		result = append(result, created)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+	return result, nil
 }
 
 func isUniqueViolation(err error, constraint string) bool {

@@ -13,6 +13,11 @@ export function TaskCreatePage() {
   const [memoryLimitMb, setMemoryLimitMb] = useState(256)
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
+  const [examples, setExamples] = useState<{ input: string; output: string }[]>([
+    { input: '', output: '' },
+    { input: '', output: '' },
+    { input: '', output: '' },
+  ])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { navigate } = useRouter()
@@ -36,6 +41,10 @@ export function TaskCreatePage() {
     }
   }
 
+  const updateExample = (index: number, field: 'input' | 'output', value: string) => {
+    setExamples((prev) => prev.map((example, i) => (i === index ? { ...example, [field]: value } : example)))
+  }
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setError('')
@@ -53,6 +62,11 @@ export function TaskCreatePage() {
 
       if (tags.length > 0) {
         await tasksApi.addTags(task.id, tags)
+      }
+
+      const nonEmptyExamples = examples.filter((example) => example.input.trim() || example.output.trim())
+      if (nonEmptyExamples.length > 0) {
+        await tasksApi.setExamples(task.id, nonEmptyExamples)
       }
 
       navigate(`/tasks/${task.slug}`)
@@ -138,6 +152,39 @@ export function TaskCreatePage() {
             </div>
           ) : null}
         </label>
+
+        <div className="field">
+          <span>Примеры (необязательно, до 3 штук)</span>
+          <p className="muted example-hint">
+            Показываются всем на странице задачи. Достаточно заполнить хотя бы одно поле в паре —
+            пустые пары не сохранятся.
+          </p>
+          <div className="example-list">
+            {examples.map((example, index) => (
+              <div className="example-pair" key={index}>
+                <span className="example-pair-label">Пример {index + 1}</span>
+                <div className="form-row">
+                  <label className="field">
+                    <span>Ввод</span>
+                    <textarea
+                      rows={3}
+                      value={example.input}
+                      onChange={(event) => updateExample(index, 'input', event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Вывод</span>
+                    <textarea
+                      rows={3}
+                      value={example.output}
+                      onChange={(event) => updateExample(index, 'output', event.target.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div className="form-row form-row-three">
           <label className="field">

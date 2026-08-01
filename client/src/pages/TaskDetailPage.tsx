@@ -171,6 +171,32 @@ export function TaskDetailPage({ slug }: { slug: string }) {
             </div>
           ) : null}
           <p className="task-statement-text">{task.statement}</p>
+
+          {task.examples.length > 0 ? (
+            <div className="task-examples">
+              <h3>Примеры</h3>
+              {task.examples.map((example, index) => (
+                <div className="task-example" key={example.id}>
+                  <span className="task-example-label">Пример {index + 1}</span>
+                  <div className="task-example-pair">
+                    {example.input.trim() ? (
+                      <div className="task-example-block">
+                        <span>Ввод</span>
+                        <pre>{example.input}</pre>
+                      </div>
+                    ) : null}
+                    {example.output.trim() ? (
+                      <div className="task-example-block">
+                        <span>Вывод</span>
+                        <pre>{example.output}</pre>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           <div className="task-limits">
             <div>
               <span>Время</span>
