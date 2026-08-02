@@ -198,14 +198,14 @@ func (h *Handler) UploadTests(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "archive is too large or the request is not a valid multipart form")
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer r.MultipartForm.RemoveAll() //nolint:errcheck,noctx
 
 	file, header, err := r.FormFile("archive")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, `missing "archive" file field`)
 		return
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck,noctx
 
 	count, err := h.service.UploadTests(r.Context(), userId, taskID, file, header.Size)
 	if err != nil {
@@ -339,7 +339,7 @@ func (h *Handler) SetExamples(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(payload)
+	json.NewEncoder(w).Encode(payload) //nolint:errcheck,noctx
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

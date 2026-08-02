@@ -2,6 +2,7 @@ package submit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -69,7 +70,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (Submission, error)
 		&submission.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return Submission{}, ErrSubmissionNotFound
 		}
 		return Submission{}, fmt.Errorf("get submission by id: %w", err)
@@ -238,7 +239,7 @@ func (r *Repository) UpdateResult(ctx context.Context, id string, status Status,
 		&submission.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return Submission{}, ErrSubmissionNotFound
 		}
 		return Submission{}, fmt.Errorf("update submission result: %w", err)

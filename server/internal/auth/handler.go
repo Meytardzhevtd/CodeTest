@@ -161,14 +161,14 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "avatar is too large or the request is not a valid multipart form")
 		return
 	}
-	defer r.MultipartForm.RemoveAll()
+	defer r.MultipartForm.RemoveAll() //nolint:errcheck,noctx
 
 	file, header, err := r.FormFile("avatar")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, `missing "avatar" file field`)
 		return
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck,noctx
 
 	contentType := header.Header.Get("Content-Type")
 	user, err := h.service.UploadAvatar(r.Context(), userID, file, header.Size, contentType)

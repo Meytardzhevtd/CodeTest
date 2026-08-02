@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -109,14 +110,14 @@ func main() {
 	}
 
 	submissionsProducer := kafka.NewProducer(cfg.KafkaBrokers, kafka.TopicSubmissions)
-	defer submissionsProducer.Close()
+	defer submissionsProducer.Close() //nolint:errcheck,noctx
 
 	submitRepo := submitinternal.NewRepository(pool)
 	submitService := submitinternal.NewService(submitRepo, submissionsProducer)
 	submitHandler := submitinternal.NewHandler(submitService)
 
 	resultsConsumer := kafka.NewConsumer(cfg.KafkaBrokers, kafka.TopicResults, "server-results-consumer")
-	defer resultsConsumer.Close()
+	defer resultsConsumer.Close() //nolint:errcheck,noctx
 
 	go resultsConsumer.Consume(ctx, func(ctx context.Context, data []byte) error {
 		var msg kafka.ResponseMessage
@@ -174,8 +175,8 @@ func runMigrations(dsn string) error {
 	if err != nil {
 		return fmt.Errorf("create migrator: %w", err)
 	}
-	defer m.Close()
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	defer m.Close() //nolint:errcheck,noctx
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
 	return nil

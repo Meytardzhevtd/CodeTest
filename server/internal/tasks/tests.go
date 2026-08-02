@@ -3,6 +3,7 @@ package tasks
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -48,7 +49,7 @@ func (s *Service) UploadTests(ctx context.Context, userID, taskID string, archiv
 
 	task, err := s.repo.GetTaskByID(ctx, taskID)
 	if err != nil {
-		if err == ErrTaskNotFound {
+		if errors.Is(err, ErrTaskNotFound) {
 			return 0, ErrTaskNotFound
 		}
 		return 0, fmt.Errorf("get task by id: %w", err)
@@ -59,7 +60,7 @@ func (s *Service) UploadTests(ctx context.Context, userID, taskID string, archiv
 
 	zr, err := zip.NewReader(archive, size)
 	if err != nil {
-		return 0, fmt.Errorf("%w: not a valid zip file: %v", ErrInvalidArchive, err)
+		return 0, fmt.Errorf("%w: not a valid zip file: %v", ErrInvalidArchive, err) //nolint:errorlint
 	}
 
 	pairs, err := parseTestsArchive(zr)
@@ -156,13 +157,13 @@ func uploadTestPair(ctx context.Context, store storage.Writer, taskID string, nu
 	if err != nil {
 		return fmt.Errorf("open %q: %w", p.in.Name, err)
 	}
-	defer inRC.Close()
+	defer inRC.Close() //nolint:errcheck,noctx
 
 	outRC, err := p.out.Open()
 	if err != nil {
 		return fmt.Errorf("open %q: %w", p.out.Name, err)
 	}
-	defer outRC.Close()
+	defer outRC.Close() //nolint:errcheck,noctx
 
 	return store.UploadTest(ctx, taskID, num,
 		inRC, int64(p.in.UncompressedSize64),

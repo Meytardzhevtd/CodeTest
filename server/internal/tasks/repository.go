@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -75,7 +76,7 @@ func (r *Repository) GetTaskByID(ctx context.Context, id string) (Task, error) {
 		&task.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return Task{}, ErrTaskNotFound
 		}
 		return Task{}, fmt.Errorf("get task by id: %w", err)
@@ -108,7 +109,7 @@ func (r *Repository) GetTaskBySlug(ctx context.Context, slug string) (Task, erro
 		&task.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return Task{}, ErrTaskNotFound
 		}
 		return Task{}, fmt.Errorf("get task by slug: %w", err)
@@ -135,7 +136,7 @@ func (r *Repository) ListTasks(ctx context.Context, limit, offset int) ([]Task, 
 	if err != nil {
 		return nil, 0, fmt.Errorf("list tasks: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck,noctx
 
 	for rows.Next() {
 		var task Task
@@ -208,7 +209,7 @@ func (r *Repository) UpdateTask(ctx context.Context, id string, updates Task) (T
 		&task.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return Task{}, ErrTaskNotFound
 		}
 		if isUniqueViolation(err, "tasks_slug_key") {
@@ -261,7 +262,7 @@ func (r *Repository) attachTags(ctx context.Context, tasks []*Task) error {
 	if err != nil {
 		return fmt.Errorf("attach tags: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck,noctx
 
 	for rows.Next() {
 		var taskID, name string
@@ -282,7 +283,7 @@ func (r *Repository) AddTagsToTask(ctx context.Context, taskID string, tagNames 
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck,noctx
 
 	for _, name := range tagNames {
 		var tagID string
@@ -323,7 +324,7 @@ func (r *Repository) SetTags(ctx context.Context, taskID string, tagNames []stri
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck,noctx
 
 	if _, err := tx.Exec(ctx, `DELETE FROM task_tags WHERE task_id = $1`, taskID); err != nil {
 		return nil, fmt.Errorf("clear tags: %w", err)
@@ -383,7 +384,7 @@ func (r *Repository) attachExamples(ctx context.Context, tasks []*Task) error {
 	if err != nil {
 		return fmt.Errorf("attach examples: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck,noctx
 
 	for rows.Next() {
 		var taskID string
@@ -404,7 +405,7 @@ func (r *Repository) SetExamples(ctx context.Context, taskID string, examples []
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck,noctx
 
 	if _, err := tx.Exec(ctx, `DELETE FROM task_examples WHERE task_id = $1`, taskID); err != nil {
 		return nil, fmt.Errorf("clear examples: %w", err)
@@ -434,7 +435,7 @@ func isUniqueViolation(err error, constraint string) bool {
 	if err == nil {
 		return false
 	}
-	pgErr, ok := err.(*pgconn.PgError)
+	pgErr, ok := err.(*pgconn.PgError) //nolint:errorlint
 	if !ok {
 		return false
 	}

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -44,7 +45,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, st
 		WHERE email = $1
 	`, email).Scan(&user.ID, &user.Email, &user.Username, &passwordHash, &user.AvatarURL, &user.CreatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, "", ErrInvalidCredentials
 		}
 		return User{}, "", fmt.Errorf("get user by email: %w", err)
@@ -61,7 +62,7 @@ func (r *Repository) GetUserByID(ctx context.Context, userID string) (User, stri
 		WHERE id = $1
 	`, userID).Scan(&user.ID, &user.Email, &user.Username, &passwordHash, &user.AvatarURL, &user.CreatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, "", ErrInvalidCredentials
 		}
 		return User{}, "", fmt.Errorf("get user by id: %w", err)
@@ -82,7 +83,7 @@ func (r *Repository) UpdateUserProfile(ctx context.Context, userID, username, pa
 		if isUniqueViolation(err, "users_username_key") {
 			return User{}, ErrUsernameTaken
 		}
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrInvalidCredentials
 		}
 		return User{}, fmt.Errorf("update user profile: %w", err)
@@ -99,7 +100,7 @@ func (r *Repository) UpdateUserAvatar(ctx context.Context, userID, avatarURL str
 		RETURNING id, email, username, COALESCE(avatar_url, ''), created_at
 	`, userID, avatarURL).Scan(&user.ID, &user.Email, &user.Username, &user.AvatarURL, &user.CreatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrInvalidCredentials
 		}
 		return User{}, fmt.Errorf("update user avatar: %w", err)
