@@ -48,6 +48,7 @@ The server never runs untrusted code itself. It accepts a submission over REST, 
 - **PostgreSQL** — users, tasks, submissions
 - **Apache Kafka** — asynchronous submission/result pipeline
 - **MinIO** — S3-compatible object storage for test cases
+- **Redis** — LRU cache for test cases in front of MinIO (`maxmemory 256mb`, `allkeys-lru`), owned by the coordinator
 - **React + Vite + TypeScript** — frontend
 
 ## Getting started

@@ -16,10 +16,11 @@ type Server struct {
 	queue    *Queue
 	producer *kafka.Producer
 	tests    storage.Reader
+	cache    *TestCache
 }
 
-func NewServer(queue *Queue, producer *kafka.Producer, tests storage.Reader) *Server {
-	return &Server{queue: queue, producer: producer, tests: tests}
+func NewServer(queue *Queue, producer *kafka.Producer, tests storage.Reader, cache *TestCache) *Server {
+	return &Server{queue: queue, producer: producer, tests: tests, cache: cache}
 }
 
 func (s *Server) PullTask(ctx context.Context, req *judgepb.PullTaskRequest) (*judgepb.PullTaskResponse, error) {
@@ -28,19 +29,24 @@ func (s *Server) PullTask(ctx context.Context, req *judgepb.PullTaskRequest) (*j
 		return &judgepb.PullTaskResponse{}, nil
 	}
 
-	testCases, err := loadTestCases(ctx, s.tests, taskID)
-	if err != nil {
-		log.Printf("[coordinator] submission %s: не удалось прочитать тесты задачи %s: %v", task.SubmissionId, taskID, err)
-		return nil, fmt.Errorf("load test cases for task %s: %w", taskID, err)
+	testCases, ok := s.cache.Get(ctx, taskID)
+	if !ok {
+		var err error
+		testCases, err = loadTestCases(ctx, s.tests, taskID)
+		if err != nil {
+			log.Printf("[coordinator] submission %s: не удалось прочитать тесты задачи %s: %v", task.SubmissionId, taskID, err)
+			return nil, fmt.Errorf("load test cases for task %s: %w", taskID, err)
+		}
+		s.cache.Set(ctx, taskID, testCases)
 	}
 	task.TestCases = testCases
 
 	return &judgepb.PullTaskResponse{Task: task}, nil
 }
 
-// loadTestCases читает все тест-кейсы задачи из object storage заново на
-// каждый вызов — кеширования пока нет, каждая выдача задачи воркеру означает
-// полный поход в MinIO.
+// loadTestCases читает все тест-кейсы задачи из object storage — вызывается
+// только при промахе кеша (см. TestCache в cache.go), т.е. на первый запрос
+// задачи с момента запуска координатора или после вытеснения из Redis.
 func loadTestCases(ctx context.Context, reader storage.Reader, taskID string) ([]*judgepb.TestCase, error) {
 	list, err := reader.ListTests(ctx, taskID)
 	if err != nil {

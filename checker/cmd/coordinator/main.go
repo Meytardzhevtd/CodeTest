@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 
 	grpccoordinator "github.com/meytardzhevtd/CodeTest/checker/internal/coordinator"
@@ -28,6 +29,8 @@ type config struct {
 	MinioSecretKey string `env:"MINIO_SECRET_KEY,required"`
 	MinioBucket    string `env:"MINIO_BUCKET,required"`
 	MinioUseSSL    bool   `env:"MINIO_USE_SSL"`
+
+	RedisAddr string `env:"REDIS_ADDR" envDefault:"localhost:6379"`
 }
 
 func main() {
@@ -60,10 +63,17 @@ func main() {
 		log.Fatalf("create minio client: %v", err)
 	}
 
+	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	defer redisClient.Close()
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		log.Printf("[coordinator] redis at %s not reachable yet, test-case cache will retry lazily: %v", cfg.RedisAddr, err)
+	}
+	testCache := grpccoordinator.NewTestCache(redisClient)
+
 	queue := grpccoordinator.NewQueue(ctx)
 
 	grpcServer := grpc.NewServer()
-	judgepb.RegisterCoordinatorServer(grpcServer, grpccoordinator.NewServer(queue, producer, testStore))
+	judgepb.RegisterCoordinatorServer(grpcServer, grpccoordinator.NewServer(queue, producer, testStore, testCache))
 
 	lis, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
