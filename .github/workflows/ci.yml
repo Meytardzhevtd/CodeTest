@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Новый пуш в ту же ветку отменяет предыдущий незавершённый прогон.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # go-version-file вместо явной версии: единственный источник правды —
+      # go.mod, и CI не разъезжается с ним при обновлении.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      # Интеграционные тесты pkg/storage сами пропускаются (t.Skip), если MinIO
+      # недоступен, поэтому поднимать инфраструктуру для них здесь не нужно.
+      - name: go test
+        run: go test ./...
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Конфигурация — .golangci.yml (schema version 2), поэтому нужен
+      # golangci-lint v2.x.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
