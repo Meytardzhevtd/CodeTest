@@ -11,10 +11,6 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-// newTestClient connects to the MinIO instance from docker-compose.yml
-// (`docker compose up -d minio`). Overridable via MINIO_* env vars for CI.
-// If MinIO isn't reachable, the test is skipped rather than failed, so
-// `go test ./...` still works on machines without docker running.
 func newTestClient(t *testing.T) *Client {
 	t.Helper()
 
@@ -67,7 +63,7 @@ func mustUploadTest(t *testing.T, c *Client, taskID string, num int, in, out str
 
 func readAll(t *testing.T, r io.ReadCloser) string {
 	t.Helper()
-	defer r.Close()
+	defer r.Close() //nolint:errcheck,noctx
 	b, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatalf("read: %v", err)
@@ -113,9 +109,6 @@ func TestUploadListGetDeleteTest(t *testing.T) {
 	}
 }
 
-// Regression test: keyPattern used to be anchored to exactly 3 digits
-// (`test(\d{3})\.`), so test numbers >= 1000 were silently dropped from
-// ListTests instead of erroring or appearing. Now it matches any digit count.
 func TestListTests_NumberBeyondPaddingWidth(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
@@ -137,8 +130,6 @@ func TestListTests_IncompleteTestErrors(t *testing.T) {
 	ctx := context.Background()
 	taskID := uuid.NewString()
 
-	// Upload only the .in half of a test pair directly, bypassing UploadTest's
-	// cleanup, to simulate a test left incomplete by e.g. a crash mid-upload.
 	if _, err := c.mc.PutObject(ctx, c.bucket, testKey(taskID, 1, "in"),
 		bytes.NewReader([]byte("in")), 2, minio.PutObjectOptions{ContentType: "text/plain"}); err != nil {
 		t.Fatalf("seed PutObject: %v", err)
@@ -156,10 +147,6 @@ func TestListTests_NoTests(t *testing.T) {
 	}
 }
 
-// Regression test: UploadTest used to leave an orphaned .in object behind
-// when the .out upload failed, permanently breaking ListTests for the whole
-// task (it errors on any incomplete pair). Force the second PutObject to
-// fail by lying about the output size, and verify the .in was cleaned up.
 func TestUploadTest_CleansUpOrphanOnPartialFailure(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()

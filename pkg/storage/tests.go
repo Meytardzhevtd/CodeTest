@@ -38,9 +38,8 @@ func (c *Client) UploadTest(ctx context.Context, taskID string, testNum int, inp
 	if _, err := c.mc.PutObject(ctx, c.bucket, outKey, output, outputSize, minio.PutObjectOptions{
 		ContentType: "text/plain",
 	}); err != nil {
-		// Best-effort cleanup: don't leave an orphaned .in with no matching
-		// .out, which would otherwise fail every future ListTests for this task.
 		if rmErr := c.mc.RemoveObject(ctx, c.bucket, inKey, minio.RemoveObjectOptions{}); rmErr != nil {
+			//nolint:errorlint
 			return fmt.Errorf("storage: upload %q: %w (cleanup of %q also failed: %v)", outKey, err, inKey, rmErr)
 		}
 		return fmt.Errorf("storage: upload %q: %w", outKey, err)
@@ -124,21 +123,20 @@ func (c *Client) GetTest(ctx context.Context, tc TestCase) (input io.ReadCloser,
 	if err != nil {
 		return nil, nil, fmt.Errorf("storage: get %q: %w", tc.InKey, err)
 	}
-	// GetObject is lazy: it doesn't hit the network until the first read/stat,
-	// so a missing key only surfaces here, not on the call above.
+
 	if _, err := inObj.Stat(); err != nil {
-		inObj.Close()
+		inObj.Close() //nolint:errcheck,noctx
 		return nil, nil, fmt.Errorf("storage: stat %q: %w", tc.InKey, err)
 	}
 
 	outObj, err := c.mc.GetObject(ctx, c.bucket, tc.OutKey, minio.GetObjectOptions{})
 	if err != nil {
-		inObj.Close()
+		inObj.Close() //nolint:errcheck,noctx
 		return nil, nil, fmt.Errorf("storage: get %q: %w", tc.OutKey, err)
 	}
 	if _, err := outObj.Stat(); err != nil {
-		inObj.Close()
-		outObj.Close()
+		inObj.Close()  //nolint:errcheck,noctx
+		outObj.Close() //nolint:errcheck,noctx
 		return nil, nil, fmt.Errorf("storage: stat %q: %w", tc.OutKey, err)
 	}
 

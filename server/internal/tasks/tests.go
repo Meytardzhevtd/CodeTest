@@ -35,10 +35,6 @@ type zipTestPair struct {
 	in, out *zip.File
 }
 
-// UploadTests replaces the entire test set for a task from a zip archive of
-// test_NNN.in / test_NNN.out files. Only the task's creator may do this.
-// It talks only to object storage - no rows are read or written except the
-// read-only ownership check against the task itself.
 func (s *Service) UploadTests(ctx context.Context, userID, taskID string, archive io.ReaderAt, size int64) (int, error) {
 	if taskID == "" {
 		return 0, fmt.Errorf("%w: task id cannot be empty", ErrInvalidArchive)
@@ -74,15 +70,12 @@ func (s *Service) UploadTests(ctx context.Context, userID, taskID string, archiv
 	}
 	sort.Ints(numbers)
 
-	// Replace-all semantics: wipe whatever tests exist today before writing
-	// the new set, so we never end up with a mix of old and new tests.
 	if err := s.store.DeleteTask(ctx, taskID); err != nil {
 		return 0, fmt.Errorf("clear existing tests: %w", err)
 	}
 
 	for _, num := range numbers {
 		if err := uploadTestPair(ctx, s.store, taskID, num, pairs[num]); err != nil {
-			// Best-effort rollback: don't leave a partially-replaced test set.
 			_ = s.store.DeleteTask(ctx, taskID)
 			return 0, fmt.Errorf("upload test %03d: %w", num, err)
 		}

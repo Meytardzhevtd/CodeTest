@@ -8,9 +8,6 @@ import (
 	"github.com/minio/minio-go/v7"
 )
 
-// UploadAvatar stores the avatar under a key fixed to the user ID, so a
-// re-upload simply overwrites the previous file instead of leaving an
-// orphaned object behind.
 func (c *Client) UploadAvatar(ctx context.Context, userID string, data io.Reader, size int64, contentType string) (string, error) {
 	if _, err := c.mc.PutObject(ctx, c.bucket, userID, data, size, minio.PutObjectOptions{
 		ContentType: contentType,
@@ -30,8 +27,6 @@ func (c *Client) DeleteAvatar(ctx context.Context, key string) error {
 	return nil
 }
 
-// PublicURL builds the direct URL to an object in this client's bucket.
-// Only meaningful for buckets provisioned via EnsurePublicBucket.
 func (c *Client) PublicURL(key string) string {
 	scheme := "http"
 	if c.useSSL {

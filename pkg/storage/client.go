@@ -16,18 +16,12 @@ type Client struct {
 }
 
 type Config struct {
-	Endpoint  string // например "localhost:9000" или "minio:9000" внутри docker-сети, БЕЗ http://
+	Endpoint  string
 	AccessKey string
 	SecretKey string
 	Bucket    string
 	UseSSL    bool
 
-	// PublicEndpoint is the host:port used to build links returned to
-	// browsers (e.g. avatar URLs). It can differ from Endpoint: inside
-	// docker-compose the server talks to MinIO over the internal network
-	// (Endpoint="minio:9000"), but a browser on the host needs the
-	// published port (PublicEndpoint="localhost:9001"). Falls back to
-	// Endpoint when unset.
 	PublicEndpoint string
 }
 
@@ -68,10 +62,6 @@ func (c *Client) EnsureBucket(ctx context.Context) error {
 	return nil
 }
 
-// EnsurePublicBucket creates the bucket if needed and (idempotently) grants
-// anonymous read access to its objects, so uploaded files can be linked to
-// directly (e.g. avatars rendered in <img> tags) without proxying through
-// the API.
 func (c *Client) EnsurePublicBucket(ctx context.Context) error {
 	if err := c.EnsureBucket(ctx); err != nil {
 		return err
