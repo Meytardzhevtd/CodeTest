@@ -22,39 +22,20 @@ import (
 )
 
 const (
-	// Лимиты пока захардкожены: per-task time_limit_ms/memory_limit_mb лежат
-	// в Postgres, а координатор к ней не подключён и в judgepb.Task эти поля
-	// не передаются. Когда это появится, testTimeLimit/memoryLimitBytes нужно
-	// будет брать из task, а не из констант.
-	testTimeLimit = 5 * time.Second
-	// Компиляция Go в контейнере без прогретого GOCACHE собирает с нуля ещё и
-	// стандартную библиотеку — таймаут взят с запасом на этот холодный старт
-	// (см. cacheVolume у "go" в languageSpecs, который делает все последующие
-	// сборки быстрыми за счёт переиспользования кэша между контейнерами).
+	testTimeLimit    = 5 * time.Second
 	compileTimeLimit = 40 * time.Second
 	memoryLimitMiB   = 256
 	execPidsLimit    = 64
 	execCPULimit     = 1_000_000_000   // 1 vCPU, в единицах NanoCPUs
 	dockerCallSlack  = 2 * time.Second // запас поверх лимита на накладные расходы Docker API
-	// gcc:13 и golang:1.23 весят вместе больше двух гигабайт, и на холодном
-	// DinD-демоне они тянутся с нуля — таймаут рассчитан на медленный канал.
 	imagePullTimeout = 30 * time.Minute
 )
 
-// languageSpec описывает всё, что нужно воркеру, чтобы собрать (если нужно)
-// и запустить решение на конкретном языке внутри контейнера с этим образом.
 type languageSpec struct {
-	image      string
-	sourceFile string // имя файла с решением внутри контейнера, кладётся в /tmp
-	compileCmd string // пусто — компиляция не нужна (интерпретируемый язык)
-	runCmd     string
-
-	// cacheVolume — именованный Docker-volume, монтируемый в cacheMountPath.
-	// Каждый сабмишн получает свежий контейнер, так что без persistent-тома
-	// компилятору неоткуда взять кэш и каждый раз он собирает всё с нуля.
-	// Для Go это особенно чувствительно: "go build" без прогретого GOCACHE
-	// компилирует ещё и стандартную библиотеку, что может занимать дольше
-	// lease-таймаута координатора.
+	image          string
+	sourceFile     string
+	compileCmd     string
+	runCmd         string
 	cacheVolume    string
 	cacheMountPath string
 }
@@ -81,18 +62,13 @@ var languageSpecs = map[string]languageSpec{
 	},
 }
 
-// DockerJudge исполняет сабмишны в изолированных контейнерах через Docker
-// Engine API. Кеширования тест-кейсов тут нет и не должно быть — решение об
-// этом принимается координатором, воркер просто получает готовый
-// task.TestCases и гоняет его.
 type DockerJudge struct {
 	cli *client.Client
 
 	mu    sync.Mutex
-	pulls map[string]*imagePull // образ -> идущая или уже успешная загрузка
+	pulls map[string]*imagePull
 }
 
-// imagePull — одна загрузка образа, которую ждут все, кому этот образ нужен.
 type imagePull struct {
 	done chan struct{}
 	err  error
@@ -106,14 +82,6 @@ func NewDockerJudge() (*DockerJudge, error) {
 	return &DockerJudge{cli: cli, pulls: make(map[string]*imagePull)}, nil
 }
 
-// WarmImages запускает подгрузку образов всех поддерживаемых языков и сразу
-// возвращает управление. Блокировать на этом старт воркера нельзя: отдельный
-// DinD-демон не шарит кэш образов с хостом, так что на первом запуске он тянет
-// с нуля больше двух гигабайт (gcc:13 + golang:1.23), и всё это время воркер
-// не опрашивал бы координатора. Со стороны это выглядит как полностью мёртвая
-// проверка: сабмишн уходит в Kafka, ложится в очередь координатора, а клиент
-// бесконечно опрашивает статус — причём не только для C++ и Go, но и для
-// Python, образ которого давно скачался.
 func (d *DockerJudge) WarmImages(ctx context.Context) {
 	seen := make(map[string]bool, len(languageSpecs))
 	for _, spec := range languageSpecs {
@@ -134,9 +102,6 @@ func (d *DockerJudge) WarmImages(ctx context.Context) {
 	}
 }
 
-// ensureImage гарантирует, что образ есть на демоне. Один образ тянется не
-// более одного раза за раз: параллельные вызовы ждут ту же загрузку, а не
-// запускают свою.
 func (d *DockerJudge) ensureImage(ctx context.Context, img string) error {
 	d.mu.Lock()
 	p, inFlight := d.pulls[img]
@@ -165,9 +130,7 @@ func (d *DockerJudge) ensureImage(ctx context.Context, img string) error {
 }
 
 func (d *DockerJudge) pull(img string, p *imagePull) {
-	// Свой контекст, не контекст того, кто первым попросил образ: загрузку
-	// начинает кто-то один, а ждут её все, и отмена ожидания одним не должна
-	// ронять её для остальных.
+
 	ctx, cancel := context.WithTimeout(context.Background(), imagePullTimeout)
 	defer cancel()
 
@@ -175,7 +138,6 @@ func (d *DockerJudge) pull(img string, p *imagePull) {
 	close(p.done)
 
 	if p.err != nil {
-		// неудачную попытку не запоминаем — следующий сабмишн попробует снова
 		d.mu.Lock()
 		delete(d.pulls, img)
 		d.mu.Unlock()
@@ -183,9 +145,6 @@ func (d *DockerJudge) pull(img string, p *imagePull) {
 }
 
 func (d *DockerJudge) pullImage(ctx context.Context, img string) error {
-	// Если образ уже на демоне, в сеть не ходим вовсе: ImagePull всё равно
-	// сходил бы в реестр за манифестом и упал бы при недоступном интернете,
-	// хотя судить в этот момент уже есть чем.
 	if _, err := d.cli.ImageInspect(ctx, img); err == nil {
 		return nil
 	} else if !cerrdefs.IsNotFound(err) {
@@ -196,19 +155,14 @@ func (d *DockerJudge) pullImage(ctx context.Context, img string) error {
 	if err != nil {
 		return fmt.Errorf("pull image %s: %w", img, err)
 	}
-	defer rc.Close()
+	defer rc.Close() //nolint:errcheck
 
-	// ImagePull возвращает управление сразу, а качает, пока читают тело ответа
 	if _, err := io.Copy(io.Discard, rc); err != nil {
 		return fmt.Errorf("pull image %s: %w", img, err)
 	}
 	return nil
 }
 
-// Judge поднимает один контейнер на весь сабмишн, при необходимости собирает
-// решение и прогоняет каждый тест через отдельный exec внутри него.
-// Останавливается на первом же непрошедшем тесте (типичное поведение
-// чекера) — остальные не запускаются.
 func (d *DockerJudge) Judge(ctx context.Context, task *judgepb.Task) *judgepb.SubmitResultRequest {
 	spec, ok := languageSpecs[task.Language]
 	if !ok {

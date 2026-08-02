@@ -13,32 +13,12 @@ import (
 
 const testCacheKeyPrefix = "testcache:"
 
-// cachedTestCase is the JSON-serializable mirror of judgepb.TestCase used for
-// the Redis payload — kept separate from the generated proto type so cache
-// (de)serialization doesn't depend on protobuf's internal struct layout.
 type cachedTestCase struct {
 	Number         int32  `json:"n"`
 	Input          string `json:"i"`
 	ExpectedOutput string `json:"o"`
 }
 
-// TestCache is a best-effort Redis-backed cache of a task's test cases,
-// fronting the MinIO reads in loadTestCases. Redis is run with maxmemory +
-// allkeys-lru (see docker-compose.yml), so eviction under capacity pressure
-// is handled by Redis itself on every key access — this type only needs to
-// read and write whole-task entries, with no TTL and no manual eviction
-// bookkeeping.
-//
-// Every method treats a Redis error as a cache miss rather than a failure:
-// judging must keep working off MinIO even if Redis is unreachable.
-//
-// There is no invalidation path: a task's tests are treated as immutable
-// once uploaded (MVP scope). The upload endpoint (server/internal/tasks) can
-// in fact replace a task's tests in MinIO, but that's a different process
-// with no channel to the coordinator today — a re-upload after a task has
-// been judged at least once will keep serving the stale cached copy until
-// Redis evicts it under memory pressure. Wiring real invalidation (e.g. a
-// Kafka event from the upload path) is deferred until this is a real need.
 type TestCache struct {
 	client *redis.Client
 }

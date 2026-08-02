@@ -44,9 +44,6 @@ func (s *Server) PullTask(ctx context.Context, req *judgepb.PullTaskRequest) (*j
 	return &judgepb.PullTaskResponse{Task: task}, nil
 }
 
-// loadTestCases читает все тест-кейсы задачи из object storage — вызывается
-// только при промахе кеша (см. TestCache в cache.go), т.е. на первый запрос
-// задачи с момента запуска координатора или после вытеснения из Redis.
 func loadTestCases(ctx context.Context, reader storage.Reader, taskID string) ([]*judgepb.TestCase, error) {
 	list, err := reader.ListTests(ctx, taskID)
 	if err != nil {
@@ -61,14 +58,14 @@ func loadTestCases(ctx context.Context, reader storage.Reader, taskID string) ([
 		}
 
 		inputBytes, err := io.ReadAll(input)
-		input.Close()
+		input.Close() //nolint:errcheck
 		if err != nil {
-			output.Close()
+			output.Close() //nolint:errcheck
 			return nil, fmt.Errorf("read input for test %03d: %w", tc.Number, err)
 		}
 
 		outputBytes, err := io.ReadAll(output)
-		output.Close()
+		output.Close() //nolint:errcheck
 		if err != nil {
 			return nil, fmt.Errorf("read expected output for test %03d: %w", tc.Number, err)
 		}

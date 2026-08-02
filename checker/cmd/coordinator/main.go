@@ -47,10 +47,18 @@ func main() {
 	}
 
 	producer := kafka.NewProducer(cfg.KafkaBrokers, kafka.TopicResults)
-	defer producer.Close()
+	defer func() {
+		if err := producer.Close(); err != nil {
+			log.Printf("close producer: %v", err)
+		}
+	}()
 
 	consumer := kafka.NewConsumer(cfg.KafkaBrokers, kafka.TopicSubmissions, cfg.GroupID)
-	defer consumer.Close()
+	defer func() {
+		if err := consumer.Close(); err != nil {
+			log.Printf("close consumer: %v", err)
+		}
+	}()
 
 	testStore, err := storage.NewClient(storage.Config{
 		Endpoint:  cfg.MinioEndpoint,
@@ -64,7 +72,12 @@ func main() {
 	}
 
 	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
-	defer redisClient.Close()
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			log.Printf("close redis: %v", err)
+		}
+	}()
+
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Printf("[coordinator] redis at %s not reachable yet, test-case cache will retry lazily: %v", cfg.RedisAddr, err)
 	}
@@ -75,7 +88,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	judgepb.RegisterCoordinatorServer(grpcServer, grpccoordinator.NewServer(queue, producer, testStore, testCache))
 
-	lis, err := net.Listen("tcp", cfg.GRPCAddr)
+	lis, err := net.Listen("tcp", cfg.GRPCAddr) //nolint:errcheck,noctx
 	if err != nil {
 		log.Fatalf("listen on %s: %v", cfg.GRPCAddr, err)
 	}
@@ -95,11 +108,6 @@ func main() {
 	consumer.Consume(ctx, handleSubmission(queue))
 }
 
-// handleSubmission разбирает сообщение о сабмишне и кладёт задачу во внутреннюю
-// очередь координатора, откуда её заберёт воркер по gRPC. Оффсет коммитится сразу
-// после этого (см. Consumer.Consume) — результат работы воркера тут не ждём: если
-// координатор упадёт с незавершённой задачей в очереди, она потеряется, и клиенту
-// нужно будет отправить решение заново.
 func handleSubmission(queue *grpccoordinator.Queue) func(ctx context.Context, data []byte) error {
 	return func(ctx context.Context, data []byte) error {
 		var msg kafka.SubmissionMessage

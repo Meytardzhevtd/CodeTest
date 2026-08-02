@@ -33,14 +33,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("dial coordinator at %s: %v", cfg.CoordinatorAddr, err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("close conn: %v", err)
+		}
+	}()
 
 	judge, err := worker.NewDockerJudge()
 	if err != nil {
 		log.Fatalf("create docker judge: %v", err)
 	}
-	// Образы языков подгружаются в фоне: воркер должен встать в опрос
-	// координатора сразу, а не после пары гигабайт gcc/golang.
+
 	judge.WarmImages(ctx)
 
 	id := uuid.NewString()[:8]

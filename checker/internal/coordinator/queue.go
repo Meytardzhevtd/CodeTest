@@ -10,11 +10,6 @@ import (
 )
 
 const (
-	// leaseTimeout взят с запасом на компиляцию (см. compileTimeLimit в
-	// checker/internal/worker/docker.go) и прогон всех тестов — иначе
-	// воркер, который всё ещё честно проверяет медленный сабмишн (например,
-	// холодную сборку Go), теряет lease и тот же сабмишн уходит другому
-	// воркеру параллельно.
 	leaseTimeout    = 90 * time.Second
 	cleanupInterval = 30 * time.Second
 )
@@ -46,10 +41,6 @@ func (q *Queue) Enqueue(taskID string, task *judgepb.Task) {
 	log.Printf("[queue] submission %s поставлена в очередь (language=%s)", task.SubmissionId, task.Language)
 }
 
-// Lease возвращает следующую свободную задачу вместе с id задачи (task_id),
-// который нужен вызывающему коду только для того, чтобы подтянуть тест-кейсы
-// из хранилища — самому воркеру task_id не передаётся (в judgepb.Task такого
-// поля нет).
 func (q *Queue) Lease() (*judgepb.Task, string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
