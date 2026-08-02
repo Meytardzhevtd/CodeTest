@@ -1,94 +1,152 @@
 # CodeTest
 
-Online judge platform: submit source code against a task's test suite and get a verdict back — powered by an asynchronous, Kafka-driven checking pipeline.
+**Онлайн-судья.** Отправляете решение — оно уходит в очередь, исполняется в
+изолированном контейнере и возвращается вердиктом.
 
 [![Go](https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
+[![gRPC](https://img.shields.io/badge/gRPC-protobuf-244c5a?logo=google&logoColor=white)](checker/proto/judge.proto)
 [![Kafka](https://img.shields.io/badge/kafka-3.8-231F20?logo=apachekafka&logoColor=white)](docker-compose.yml)
 [![PostgreSQL](https://img.shields.io/badge/postgres-16-4169E1?logo=postgresql&logoColor=white)](docker-compose.yml)
+[![Docker](https://img.shields.io/badge/sandbox-docker--in--docker-2496ED?logo=docker&logoColor=white)](checker/internal/worker/docker.go)
 [![React](https://img.shields.io/badge/react-19-149ECA?logo=react&logoColor=white)](client/package.json)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-## Architecture
+---
+
+## Что умеет
+
+🧩 **Задачи** — условие, сложность, теги, примеры ввода-вывода. Набор тестов
+загружается одним zip-архивом.
+
+⌨️ **Решения на Python, C++ и Go** — редактор с подсветкой синтаксиса прямо в
+браузере.
+
+🔒 **Настоящая песочница** — каждый сабмишн исполняется в отдельном контейнере:
+без сети, с лимитами по памяти, CPU и числу процессов.
+
+⚖️ **Полный набор вердиктов** — `OK`, `WA`, `TL`, `ML`, `RE`, `CE` — с выводом
+программы и историей посылок по каждой задаче.
+
+👤 **Аккаунты** — JWT с refresh-токенами, профиль, аватары.
+
+---
+
+## Как это работает
 
 ```
-┌──────────┐   REST + JWT    ┌───────────────┐
-│  Client  │ ───────────────▶│    Server     │──── Postgres (users, tasks, submissions)
-│ (React)  │◀─────────────── │  (go-chi API) │──── MinIO (test case fixtures)
-└──────────┘    verdicts     └───────┬───▲───┘
-                                      │   │
-                          submissions │   │ results
-                                      ▼   │
-                              ┌──────────────────┐
-                              │       Kafka       │
-                              └──────────┬───▲────┘
-                                         │   │
-                             submissions │   │ results
-                                         ▼   │
-                              ┌──────────────────┐
-                              │    Coordinator    │
-                              │ (checker service) │
-                              └──────────────────┘
+ ┌──────────┐  REST + JWT  ┌──────────┐  submissions   ┌─────────────┐
+ │  Клиент  │─────────────▶│  Сервер  │───────────────▶│ Координатор │
+ │  React   │◀─────────────│  go-chi  │◀───────────────│             │
+ └──────────┘   вердикт    └────┬─────┘    results     └──────┬──────┘
+                                │           (Kafka)           │
+                        ┌───────┴───────┐                     │ gRPC, pull
+                        │   Postgres    │                     ▼
+                        │     MinIO     │              ┌─────────────┐
+                        └───────────────┘              │  Воркеры ×3 │
+                                                       └──────┬──────┘
+                                                              │ Docker API
+                                                              ▼
+                                                  ┌───────────────────────┐
+                                                  │ контейнер на сабмишн  │
+                                                  └───────────────────────┘
 ```
 
-The server never runs untrusted code itself. It accepts a submission over REST, persists it, and publishes it to the `submissions` topic. The **coordinator** consumes that topic, judges the solution, and publishes a verdict to the `submission-results` topic. The server consumes results and makes them available through the same REST API the client already polls — the two services never talk to each other directly, only through Kafka, so either can restart or scale independently without losing in-flight work.
+Сервер принимает решение по REST, сохраняет его и кладёт в Kafka — на этом его
+работа заканчивается. Дальше координатор раздаёт задачи пулу воркеров по gRPC, а
+воркеры исполняют код в контейнерах на отдельном Docker-демоне. **Процесс,
+который принимает HTTP-трафик, никогда не запускает чужой код**, а процесс,
+который его запускает, не имеет доступа ни к базе, ни к хранилищу, ни к сети.
 
-## Services
+Воркеры забирают задачи сами (pull), поэтому пул масштабируется просто числом
+реплик — координатору о них ничего знать не нужно.
 
-| Service | Path | Responsibility |
+> 📐 Устройство системы целиком — границы сервисов, контракты, модель данных,
+> гарантии доставки и известные ограничения — в
+> **[doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)**.
+
+---
+
+## Песочница
+
+Самая интересная часть проекта. Один контейнер на сабмишн, тесты гоняются в нём
+по одному, проверка останавливается на первом непрошедшем.
+
+| Ограничение | Значение |
+|---|---|
+| Сеть | отключена полностью (`network=none`) |
+| Память | 256 MiB, своп не добавляется поверх лимита |
+| CPU | 1 vCPU |
+| Процессы | 64 — fork-бомба упирается в потолок |
+| Время | 5 с на тест, 40 с на компиляцию |
+| Демон | отдельный Docker-in-Docker, без доступа к демону хоста |
+
+Лимит времени навязывается **изнутри** контейнера, а не отменой запроса снаружи:
+у Docker API нет способа надёжно убить конкретный exec.
+
+| Язык | Образ | Особенности |
 |---|---|---|
-| **server** | `server/` | Auth, task management, submission intake and status, REST API |
-| **coordinator** | `checker/cmd/coordinator` | Consumes submissions, judges them, publishes verdicts |
-| **client** | `client/` | React SPA consuming the REST API |
-| **pkg/kafka** | `pkg/kafka` | Shared producer/consumer/admin wrappers and message contracts |
-| **pkg/storage** | `pkg/storage` | MinIO-backed test case storage |
+| Python | `python:3.12-slim` | без компиляции |
+| C++ | `gcc:13` | `g++ -O2` |
+| Go | `golang:1.23` | общий том с кешем сборки — иначе каждый сабмишн пересобирает stdlib |
 
-## Stack
+Вывод сравнивается после нормализации: хвостовые пробелы и пустые строки в конце
+не считаются ошибкой.
 
-- **Go** — server & coordinator, [chi](https://github.com/go-chi/chi) router, [pgx](https://github.com/jackc/pgx) driver
-- **PostgreSQL** — users, tasks, submissions
-- **Apache Kafka** — asynchronous submission/result pipeline
-- **MinIO** — S3-compatible object storage for test cases
-- **Redis** — LRU cache for test cases in front of MinIO (`maxmemory 256mb`, `allkeys-lru`), owned by the coordinator
-- **React + Vite + TypeScript** — frontend
+---
 
-## Getting started
+## Стек
 
-**Prerequisites:** Go 1.25+, Docker, Node.js (for the client)
+| Слой | Технологии |
+|---|---|
+| Бэкенд | Go 1.25, [chi](https://github.com/go-chi/chi), [pgx](https://github.com/jackc/pgx), [golang-migrate](https://github.com/golang-migrate/migrate) |
+| Асинхронность | Apache Kafka (KRaft), gRPC + Protocol Buffers |
+| Хранилища | PostgreSQL 16, MinIO (S3-совместимое), Redis (LRU-кеш тестов) |
+| Исполнение | Docker Engine API, Docker-in-Docker |
+| Фронтенд | React 19, Vite, TypeScript, CodeMirror |
+
+---
+
+## Запуск
+
+**Нужно:** Docker и Node.js.
 
 ```bash
-# infrastructure: postgres, kafka, minio
 cp .env.example .env
-make up
+make up          # поднимает всё: инфраструктуру, сервер, координатор и 3 воркера
 
-# server (runs migrations, ensures kafka topics, serves the API)
-make server
-
-# coordinator (separate process)
-go run ./checker/cmd/coordinator
-
-# client
 cd client && npm install && npm run dev
 ```
 
-The API listens on `:8080` by default; see `.env.example` for all configuration options.
+Клиент — на `http://localhost:5173`, API — на `:8080`.
 
-## API overview
+> При первом запуске воркеры тянут образы языков (`gcc:13` и `golang:1.23` — это
+> больше двух гигабайт) в свой изолированный демон. Загрузка идёт в фоне и не
+> блокирует старт, но первые сабмишны на C++ и Go подождут.
 
-| Endpoint | Auth | Description |
-|---|---|---|
-| `POST /api/auth/register` | — | Create an account |
-| `POST /api/auth/login` | — | Obtain a JWT |
-| `GET/POST /api/tasks` | JWT | List / create tasks |
-| `POST /api/submit` | JWT | Submit a solution for judging |
-| `GET /api/submit?id=` | JWT | Poll a submission's verdict |
+Все переменные окружения — в [`.env.example`](.env.example).
 
-## Development
+---
+
+## Разработка
 
 ```bash
-make test   # go test ./...
-make fmt    # go fmt ./...
+make test          # go test ./...
+make fmt           # go fmt ./...
+golangci-lint run  # конфигурация в .golangci.yml
+
+make migrate-create   # заготовка новой миграции
+make force-up         # пересоздать стек, удалив тома
 ```
 
-## License
+Сервер и координатор можно поднимать вне Docker — тогда `make up` даёт только
+инфраструктуру, а дальше `make server` и `go run ./checker/cmd/coordinator`.
 
-MIT — see [LICENSE](LICENSE).
+Юнит-тесты сервисного слоя работают на моках. Интеграционные тесты `pkg/storage`
+требуют живого MinIO и пропускаются, если он недоступен, — `go test ./...`
+остаётся зелёным на машине без запущенного Docker.
+
+---
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).
