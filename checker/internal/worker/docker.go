@@ -284,12 +284,6 @@ func (d *DockerJudge) copyCode(ctx context.Context, containerID, fileName, code 
 	return d.cli.CopyToContainer(ctx, containerID, "/tmp", &buf, container.CopyToContainerOptions{})
 }
 
-// runTest запускает уже собранное (для компилируемых языков) или интерпретируемое
-// решение в отдельном exec поверх уже поднятого контейнера и переводит код
-// возврата в вердикт. Реальный лимит по времени навязывается изнутри
-// контейнера через `timeout` (код возврата 124), а не через context — это
-// надёжнее, чем пытаться убить конкретный exec-процесс снаружи через Docker
-// API, для которого нет прямого "kill exec" эндпоинта.
 func (d *DockerJudge) runTest(ctx context.Context, containerID, runCmd string, tc *judgepb.TestCase) (judgepb.Status, string, string, error) {
 	cmd := fmt.Sprintf("timeout %gs %s", testTimeLimit.Seconds(), runCmd)
 	exitCode, stdout, stderr, err := d.exec(ctx, containerID, cmd, tc.Input, testTimeLimit+dockerCallSlack)
@@ -304,22 +298,14 @@ func (d *DockerJudge) runTest(ctx context.Context, containerID, runCmd string, t
 		}
 		return judgepb.Status_STATUS_WA, stdout, "", nil
 	case 124:
-		// код возврата coreutils timeout при принудительном убийстве по таймауту
 		return judgepb.Status_STATUS_TL, "", "", nil
 	case 137:
-		// SIGKILL — в т.ч. OOM killer при превышении лимита памяти контейнера;
-		// это эвристика, точнее без чтения cgroup-событий не отличить от
-		// любого другого SIGKILL, но для MVP этого достаточно
 		return judgepb.Status_STATUS_ML, "", "", nil
 	default:
 		return judgepb.Status_STATUS_RE, stdout, stderr, nil
 	}
 }
 
-// exec запускает команду в уже поднятом контейнере, передаёт stdin (если
-// есть) и возвращает код возврата и вывод. Используется и для компиляции, и
-// для прогона тестов — единственная разница между ними в том, что подаётся
-// на stdin и как трактуется код возврата.
 func (d *DockerJudge) exec(ctx context.Context, containerID, cmd, stdin string, timeout time.Duration) (int, string, string, error) {
 	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -365,9 +351,6 @@ func (d *DockerJudge) exec(ctx context.Context, containerID, cmd, stdin string, 
 	return inspect.ExitCode, stdout.String(), stderr.String(), nil
 }
 
-// normalizeOutput приводит вывод к каноническому виду перед сравнением:
-// убирает пробелы/табы в конце строк и пустые строки в конце вывода, чтобы
-// не засчитывать WA из-за незначащих различий в форматировании.
 func normalizeOutput(s string) string {
 	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 	for i, line := range lines {
