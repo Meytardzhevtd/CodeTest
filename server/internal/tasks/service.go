@@ -82,7 +82,7 @@ func (s *Service) GetTaskBySlug(ctx context.Context, slug string) (Task, error) 
 	return task, nil
 }
 
-func (s *Service) ListTasks(ctx context.Context, limit, offset int) ([]Task, int, error) {
+func (s *Service) ListTasks(ctx context.Context, limit, offset int, search string) ([]Task, int, error) {
 	if limit < 1 || limit > 100 {
 		return nil, 0, ErrInvalidLimit
 	}
@@ -90,7 +90,9 @@ func (s *Service) ListTasks(ctx context.Context, limit, offset int) ([]Task, int
 		return nil, 0, ErrInvalidOffset
 	}
 
-	tasks, total, err := s.repo.ListTasks(ctx, limit, offset)
+	search = strings.TrimSpace(search)
+
+	tasks, total, err := s.repo.ListTasks(ctx, limit, offset, search)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list tasks: %w", err)
 	}

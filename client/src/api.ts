@@ -99,8 +99,11 @@ export const authApi = {
 }
 
 export const tasksApi = {
-  list: (limit = 50, offset = 0) =>
-    request<TaskListResponse>(`/api/tasks?limit=${limit}&offset=${offset}`),
+  list: (limit = 50, offset = 0, search = '') => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (search) params.set('search', search)
+    return request<TaskListResponse>(`/api/tasks?${params.toString()}`)
+  },
 
   getBySlug: (slug: string) => request<Task>(`/api/tasks/slug/${encodeURIComponent(slug)}`),
 

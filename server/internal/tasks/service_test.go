@@ -288,10 +288,10 @@ func TestService_ListTasks_Success(t *testing.T) {
 	total := 1
 
 	mockRepo.EXPECT().
-		ListTasks(gomock.Any(), gomock.Eq(10), gomock.Eq(0)).
+		ListTasks(gomock.Any(), gomock.Eq(10), gomock.Eq(0), gomock.Eq("")).
 		Return(expectedTasks, total, nil)
 
-	result, count, err := svc.ListTasks(ctx, 10, 0)
+	result, count, err := svc.ListTasks(ctx, 10, 0, "")
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -313,7 +313,7 @@ func TestService_ListTasks_InvalidLimit(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, _, err := svc.ListTasks(ctx, 101, 0)
+	_, _, err := svc.ListTasks(ctx, 101, 0, "")
 
 	if err == nil {
 		t.Error("expected error for invalid limit, got nil")
@@ -329,9 +329,42 @@ func TestService_ListTasks_InvalidOffset(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, _, err := svc.ListTasks(ctx, 10, -1)
+	_, _, err := svc.ListTasks(ctx, 10, -1, "")
 
 	if err == nil {
 		t.Error("expected error for invalid offset, got nil")
+	}
+}
+
+func TestService_ListTasks_WithSearch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockRepositoryInterface(ctrl)
+	svc := NewService(mockRepo, nil)
+
+	ctx := context.Background()
+	expectedTasks := []Task{
+		{
+			ID:    "550e8400-e29b-41d4-a716-446655440002",
+			Slug:  "two-sum",
+			Title: "Two Sum",
+		},
+	}
+
+	mockRepo.EXPECT().
+		ListTasks(gomock.Any(), gomock.Eq(10), gomock.Eq(0), gomock.Eq("two sum")).
+		Return(expectedTasks, 1, nil)
+
+	result, count, err := svc.ListTasks(ctx, 10, 0, "  two sum  ")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected total 1, got %d", count)
+	}
+	if len(result) != 1 {
+		t.Errorf("expected 1 task, got %d", len(result))
 	}
 }

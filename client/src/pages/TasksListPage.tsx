@@ -20,16 +20,24 @@ export function TasksListPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(handle)
+  }, [search])
 
   useEffect(() => {
     let cancelled = false
 
     tasksApi
-      .list(50, 0)
+      .list(50, 0, debouncedSearch)
       .then((res) => {
         if (cancelled) return
         setTasks(res.tasks)
         setTotal(res.total)
+        setError('')
       })
       .catch((err) => {
         if (cancelled) return
@@ -42,7 +50,7 @@ export function TasksListPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [debouncedSearch])
 
   const visibleTasks = onlyMine ? tasks.filter((task) => task.created_by === user?.id) : tasks
 
@@ -59,16 +67,26 @@ export function TasksListPage() {
         </Link>
       </div>
 
-      {!loading && !error && tasks.length > 0 ? (
-        <label className="filter-checkbox">
-          <input
-            type="checkbox"
-            checked={onlyMine}
-            onChange={(event) => setOnlyMine(event.target.checked)}
-          />
-          Мои задачи
-        </label>
-      ) : null}
+      <div className="list-toolbar">
+        <input
+          type="search"
+          className="search-input"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Поиск по названию…"
+          aria-label="Поиск задач по названию"
+        />
+        {!loading && !error && tasks.length > 0 ? (
+          <label className="filter-checkbox">
+            <input
+              type="checkbox"
+              checked={onlyMine}
+              onChange={(event) => setOnlyMine(event.target.checked)}
+            />
+            Мои задачи
+          </label>
+        ) : null}
+      </div>
 
       {loading ? (
         <div className="task-grid">
@@ -85,7 +103,13 @@ export function TasksListPage() {
 
       {!loading && error ? <div className="alert alert-error">{error}</div> : null}
 
-      {!loading && !error && tasks.length === 0 ? (
+      {!loading && !error && tasks.length === 0 && debouncedSearch ? (
+        <div className="empty-state">
+          <p>По запросу «{debouncedSearch}» ничего не найдено.</p>
+        </div>
+      ) : null}
+
+      {!loading && !error && tasks.length === 0 && !debouncedSearch ? (
         <div className="empty-state">
           <p>Пока нет ни одной задачи.</p>
           <Link to="/tasks/new" className="btn btn-primary">

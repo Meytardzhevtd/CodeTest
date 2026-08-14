@@ -115,9 +115,9 @@ func (mr *MockRepositoryInterfaceMockRecorder) GetTaskBySlug(ctx, slug any) *gom
 }
 
 // ListTasks mocks base method.
-func (m *MockRepositoryInterface) ListTasks(ctx context.Context, limit, offset int) ([]Task, int, error) {
+func (m *MockRepositoryInterface) ListTasks(ctx context.Context, limit, offset int, search string) ([]Task, int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListTasks", ctx, limit, offset)
+	ret := m.ctrl.Call(m, "ListTasks", ctx, limit, offset, search)
 	ret0, _ := ret[0].([]Task)
 	ret1, _ := ret[1].(int)
 	ret2, _ := ret[2].(error)
@@ -125,9 +125,9 @@ func (m *MockRepositoryInterface) ListTasks(ctx context.Context, limit, offset i
 }
 
 // ListTasks indicates an expected call of ListTasks.
-func (mr *MockRepositoryInterfaceMockRecorder) ListTasks(ctx, limit, offset any) *gomock.Call {
+func (mr *MockRepositoryInterfaceMockRecorder) ListTasks(ctx, limit, offset, search any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTasks", reflect.TypeOf((*MockRepositoryInterface)(nil).ListTasks), ctx, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTasks", reflect.TypeOf((*MockRepositoryInterface)(nil).ListTasks), ctx, limit, offset, search)
 }
 
 // SetExamples mocks base method.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -14,7 +15,7 @@ type RepositoryInterface interface {
 	CreateTask(ctx context.Context, task Task) (Task, error)
 	GetTaskByID(ctx context.Context, id string) (Task, error)
 	GetTaskBySlug(ctx context.Context, slug string) (Task, error)
-	ListTasks(ctx context.Context, limit, offset int) ([]Task, int, error)
+	ListTasks(ctx context.Context, limit, offset int, search string) ([]Task, int, error)
 	UpdateTask(ctx context.Context, id string, updates Task) (Task, error)
 	DeleteTask(ctx context.Context, id string) error
 	AddTagsToTask(ctx context.Context, taskID string, tagNames []string) ([]string, error)
@@ -123,16 +124,37 @@ func (r *Repository) GetTaskBySlug(ctx context.Context, slug string) (Task, erro
 	return task, nil
 }
 
-func (r *Repository) ListTasks(ctx context.Context, limit, offset int) ([]Task, int, error) {
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+func likePattern(search string) string {
+	return likeEscaper.Replace(strings.ToLower(search))
+}
+
+func (r *Repository) ListTasks(ctx context.Context, limit, offset int, search string) ([]Task, int, error) {
 	tasks := []Task{}
-	rows, err := r.pool.Query(ctx, `
-		SELECT t.id, t.slug, t.title, t.statement, t.difficulty, t.time_limit_ms, t.memory_limit_mb,
-		       t.created_by, u.username, t.created_at, t.updated_at
-		FROM tasks t
-		JOIN users u ON u.id = t.created_by
-		ORDER BY t.created_at DESC
-		LIMIT $1 OFFSET $2
-	`, limit, offset)
+
+	var rows pgx.Rows
+	var err error
+	if search == "" {
+		rows, err = r.pool.Query(ctx, `
+			SELECT t.id, t.slug, t.title, t.statement, t.difficulty, t.time_limit_ms, t.memory_limit_mb,
+			       t.created_by, u.username, t.created_at, t.updated_at
+			FROM tasks t
+			JOIN users u ON u.id = t.created_by
+			ORDER BY t.created_at DESC
+			LIMIT $1 OFFSET $2
+		`, limit, offset)
+	} else {
+		rows, err = r.pool.Query(ctx, `
+			SELECT t.id, t.slug, t.title, t.statement, t.difficulty, t.time_limit_ms, t.memory_limit_mb,
+			       t.created_by, u.username, t.created_at, t.updated_at
+			FROM tasks t
+			JOIN users u ON u.id = t.created_by
+			WHERE lower(t.title) LIKE '%' || $3 || '%' OR lower(t.title) % lower($4)
+			ORDER BY word_similarity(lower($4), lower(t.title)) DESC, t.created_at DESC
+			LIMIT $1 OFFSET $2
+		`, limit, offset, likePattern(search), search)
+	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("list tasks: %w", err)
 	}
@@ -174,7 +196,14 @@ func (r *Repository) ListTasks(ctx context.Context, limit, offset int) ([]Task, 
 	}
 
 	var total int
-	err = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&total)
+	if search == "" {
+		err = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&total)
+	} else {
+		err = r.pool.QueryRow(ctx, `
+			SELECT COUNT(*) FROM tasks
+			WHERE lower(title) LIKE '%' || $1 || '%' OR lower(title) % lower($2)
+		`, likePattern(search), search).Scan(&total)
+	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("count tasks: %w", err)
 	}

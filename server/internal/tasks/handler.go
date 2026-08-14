@@ -110,8 +110,9 @@ func (h *Handler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	search := r.URL.Query().Get("search")
 
-	tasks, total, err := h.service.ListTasks(r.Context(), limit, offset)
+	tasks, total, err := h.service.ListTasks(r.Context(), limit, offset, search)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "something went wrong")
 		return
