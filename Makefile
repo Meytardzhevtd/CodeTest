@@ -9,12 +9,14 @@ CLIENT_DIR     ?= client
 MIGRATIONS_DIR ?= server/migrations
 COMPOSE        ?= docker compose
 MODULE         ?= github.com/meytardzhevtd/CodeTest
+BENCH_PKG      ?= ./checker/internal/coordinator/
+BENCH_COUNT    ?= 10
 
 .DEFAULT_GOAL := help
 
 .PHONY: help up down force-up logs build-images \
         server coordinator worker \
-        build vet test test-race lint fmt tidy tidy-check \
+        build vet test test-race bench-cache lint fmt tidy tidy-check \
         client-install client-dev client-build client-lint \
         proto migrate-create ci
 
@@ -67,6 +69,9 @@ test: ## Юнит-тесты (интеграционные сами пропус
 
 test-race: ## Тесты с детектором гонок (нужен gcc: -race требует cgo)
 	CGO_ENABLED=1 go test -race $(GO_PKGS)
+
+bench-cache: ## Бенчмарк кеша тест-кейсов, MinIO против Redis (нужен `make up`)
+	go test $(BENCH_PKG) -run '^$$' -bench=. -count=$(BENCH_COUNT)
 
 lint: ## golangci-lint по конфигу .golangci.yml
 	golangci-lint run $(GO_PKGS)
