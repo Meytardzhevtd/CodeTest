@@ -55,6 +55,7 @@ func (s *Service) GetTaskByID(ctx context.Context, id string) (Task, error) {
 	}
 
 	task, err := s.repo.GetTaskByID(ctx, id)
+
 	if err != nil {
 		if errors.Is(err, ErrTaskNotFound) {
 			return Task{}, ErrTaskNotFound

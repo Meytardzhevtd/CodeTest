@@ -106,9 +106,11 @@ func validateCreateSubmissionRequest(req CreateSubmissionRequest) error {
 	if strings.TrimSpace(req.TaskID) == "" {
 		return errors.New("task_id is required")
 	}
+
 	if strings.TrimSpace(req.Code) == "" {
 		return errors.New("code is required")
 	}
+
 	if !allowedLanguages[req.Language] {
 		return errors.New("unsupported language")
 	}
