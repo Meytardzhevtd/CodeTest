@@ -10,9 +10,9 @@
 [![React](https://img.shields.io/badge/react-19-149ECA?logo=react&logoColor=white)](client/package.json)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
+<img src="./demo.gif" width="700" />
 
-
-## Как это работает
+## Архитектура
 
 ```
  ┌──────────┐  REST + JWT  ┌──────────┐  submissions   ┌─────────────┐
