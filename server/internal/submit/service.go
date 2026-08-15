@@ -43,8 +43,6 @@ func (s *Service) CreateSubmition(ctx context.Context, userID string, request Cr
 		Language:     sub.Language,
 	}
 	if err := s.producer.Send(ctx, sub.ID, msg); err != nil {
-		// Сабмишн уже создан в БД, но поставить в очередь на проверку не вышло —
-		// помечаем его как ошибочный, чтобы он не завис в "pending" навсегда.
 		if _, updErr := s.repo.UpdateResult(ctx, sub.ID, StatusError, "", "failed to queue submission for checking"); updErr != nil {
 			log.Printf("[submit] failed to mark submission %s as errored after queue failure: %v", sub.ID, updErr)
 		}
@@ -54,9 +52,6 @@ func (s *Service) CreateSubmition(ctx context.Context, userID string, request Cr
 	return CreateSubmissionResponse{ID: sub.ID, Status: sub.Status}, nil
 }
 
-// HandleResult обрабатывает вердикт, пришедший от checker-микросервиса по Kafka.
-// Возвращает ошибку, если сообщение не удалось разобрать/применить — в этом случае
-// consumer не закоммитит оффсет и попробует обработать сообщение снова.
 func (s *Service) HandleResult(ctx context.Context, msg kafka.ResponseMessage) error {
 	if strings.TrimSpace(msg.SubmissionID) == "" {
 		return errors.New("result message missing submission_id")
@@ -70,7 +65,6 @@ func (s *Service) HandleResult(ctx context.Context, msg kafka.ResponseMessage) e
 }
 
 func (s *Service) GetInfoAboutSubmit(ctx context.Context, userID, submitID string) (GetSubmissionResponse, error) {
-	// дергать каждые n секунд, проверять состояние задачи
 	sub, err := s.repo.GetByID(ctx, submitID)
 	if err != nil {
 		return GetSubmissionResponse{}, err
@@ -102,8 +96,6 @@ func (s *Service) GetSubmissionHistory(ctx context.Context, userID, taskID strin
 	return SubmissionHistoryResponse{Submissions: items}, nil
 }
 
-// allowedLanguages — единственные языки, для которых есть воркер, умеющий их
-// проверять (checker/internal/worker/docker.go).
 var allowedLanguages = map[string]bool{
 	"python": true,
 	"cpp":    true,
